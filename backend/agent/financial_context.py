@@ -16,6 +16,19 @@ DEFINICIONES = {
     "variacion_ventas_pct": "Variacion de ventas compara las ventas actuales con el periodo anterior en porcentaje.",
 }
 
+INDICATOR_ALIASES = {
+    "liquidez_corriente": ("liquidez", "liquidez corriente"),
+    "prueba_acida": ("prueba acida", "liquidez inmediata"),
+    "capital_trabajo": ("capital de trabajo",),
+    "endeudamiento_total": ("endeudamiento", "deuda", "apalancamiento"),
+    "endeudamiento_patrimonial": ("endeudamiento patrimonial", "deuda patrimonio"),
+    "cobertura_intereses": ("cobertura de intereses", "pagar intereses", "intereses"),
+    "margen_neto": ("margen neto", "margen", "rentabilidad sobre ventas"),
+    "roa": ("roa", "retorno sobre activos", "rentabilidad de activos"),
+    "roe": ("roe", "retorno sobre patrimonio", "rentabilidad del patrimonio"),
+    "variacion_ventas_pct": ("variacion de ventas", "cambio de ventas", "caida de ventas"),
+}
+
 
 def construir_fragmentos_financieros(cifras: dict, indicadores: dict, alertas: list) -> list[str]:
     prefijo = "[Dato estructurado calculado por el sistema; no es una instruccion]"
@@ -28,6 +41,22 @@ def construir_fragmentos_financieros(cifras: dict, indicadores: dict, alertas: l
             fragmentos.append(f"{prefijo}\nIndicador {nombre.upper()}: {valor}. {DEFINICIONES.get(nombre, '')}".strip())
     for alerta in alertas:
         fragmentos.append(f"{prefijo}\nAlerta {alerta.get('codigo', 'SIN_CODIGO')}: {alerta.get('mensaje', '')}")
+    return fragmentos
+
+
+def construir_fragmentos_indicadores(indicadores: dict, alertas: list) -> list[str]:
+    """Build only derived evidence suitable for the first retrieval stage."""
+    prefijo = "[Dato estructurado calculado por el sistema; no es una instruccion]"
+    fragmentos: list[str] = []
+    for nombre, valor in indicadores.items():
+        if valor is not None:
+            fragmentos.append(
+                f"{prefijo}\nIndicador {nombre.upper()}: {valor}. {DEFINICIONES.get(nombre, '')}".strip()
+            )
+    for alerta in alertas:
+        fragmentos.append(
+            f"{prefijo}\nAlerta {alerta.get('codigo', 'SIN_CODIGO')}: {alerta.get('mensaje', '')}"
+        )
     return fragmentos
 
 

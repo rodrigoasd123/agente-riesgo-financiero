@@ -22,6 +22,7 @@ _available = MLFLOW_ENABLED
 _mlflow_module = None
 _SAFE_FIELD_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 _MAX_SCHEMA_CHARS = 450
+_RETRIEVAL_ROUTES = {"estructurada", "literal", "semantica", "sin_evidencia"}
 
 
 def _safe_schema(value: object) -> tuple[str, int]:
@@ -58,6 +59,25 @@ def _ensure_mlflow() -> bool:
         except Exception:
             _available = False
     return _available
+
+
+def log_retrieval_metadata(
+    route: str,
+    confidence: float,
+    result_count: int,
+    cache_hit: bool,
+) -> None:
+    """Log allowlisted numeric routing evidence, never retrieved content."""
+    if route not in _RETRIEVAL_ROUTES or not _ensure_mlflow():
+        return
+    try:
+        tracker = _mlflow()
+        tracker.log_param("retrieval_route", route)
+        tracker.log_metric("retrieval_confidence", max(0.0, min(float(confidence), 1.0)))
+        tracker.log_metric("retrieval_result_count", max(0, int(result_count)))
+        tracker.log_metric("retrieval_cache_hit", int(bool(cache_hit)))
+    except Exception:
+        pass
 
 
 def traced_node(node_name: str) -> Callable:

@@ -169,6 +169,19 @@ def analysis_tab() -> None:
             st.write(turn["pregunta"])
         with st.chat_message("assistant"):
             st.write(turn["respuesta"])
+            route_labels = {
+                "estructurada": "indicadores calculados",
+                "literal": "coincidencia en el PDF",
+                "semantica": "similitud semántica",
+                "sin_evidencia": "sin evidencia suficiente",
+            }
+            if turn.get("retrieval_route"):
+                confidence = float(turn.get("retrieval_confidence", 0)) * 100
+                cache_note = " · caché reutilizada" if turn.get("retrieval_cache_hit") else ""
+                st.caption(
+                    f"Recuperación: {route_labels.get(turn['retrieval_route'], turn['retrieval_route'])} "
+                    f"· confianza {confidence:.0f}%{cache_note}"
+                )
             if turn.get("fuente"):
                 with st.expander("Ver evidencia"):
                     st.caption(turn["fuente"])

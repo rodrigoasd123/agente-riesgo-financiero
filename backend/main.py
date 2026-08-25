@@ -30,7 +30,7 @@ app = FastAPI(
         "Analiza estados financieros sinteticos, calcula indicadores, detecta alertas "
         "y responde con fuentes. No sustituye la revision humana."
     ),
-    version="1.5.1",
+    version="1.6.0",
     lifespan=lifespan,
 )
 

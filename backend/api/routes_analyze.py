@@ -14,6 +14,7 @@ from backend.auth.dependencies import get_current_user
 from backend.config import MAX_UPLOAD_BYTES
 from backend.agent.gemini_client import GeminiUnavailableError, is_gemini_configured
 from backend.agent.pdf_reader import OCRPageLimitError
+from backend.agent.qa import crear_embeddings_documento
 from backend.db.database import guardar_analisis
 from backend.observability.tracing import agent_run
 from backend.workflow.graph import analysis_graph
@@ -86,6 +87,16 @@ async def analyze(
                     "extraction_mode": extraction_mode,
                 }
             )
+            chunks = resultado.get("chunks", [])
+            embeddings: list[list[float]] = []
+            if chunks and is_gemini_configured():
+                try:
+                    embeddings = crear_embeddings_documento(chunks)
+                except GeminiUnavailableError:
+                    logger.info(
+                        "Cache semantica no disponible para analisis %s; se creara de forma diferida",
+                        analysis_id,
+                    )
 
         guardar_analisis(
             analysis_id=analysis_id,
@@ -95,7 +106,8 @@ async def analyze(
             indicadores=resultado.get("indicadores", {}),
             alertas=resultado.get("alertas", []),
             resumen=resultado.get("resumen", ""),
-            chunks=resultado.get("chunks", []),
+            chunks=chunks,
+            embeddings=embeddings,
             extraction_mode=extraction_mode,
         )
     except HTTPException:

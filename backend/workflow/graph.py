@@ -5,7 +5,8 @@ Se definen DOS grafos compilados:
 1. analysis_graph: procesa un PDF de principio a fin
    extractor -> indicadores -> alertas -> resumen -> END
 
-2. qa_graph: responde preguntas sobre un documento ya analizado
+2. qa_graph: responde preguntas sobre un documento ya analizado. El nodo
+   retrieval aplica recuperacion graduada (indicadores -> literal -> semantica).
    retrieval -> (condicional) -> answer -> END
                               -> clarification -> END
    Esta rama condicional es el "loop de aclaracion" mencionado en el

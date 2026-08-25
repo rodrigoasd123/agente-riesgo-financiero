@@ -112,6 +112,9 @@ En <http://localhost:5000> selecciona el experimento `agente-riesgo-financiero`.
 9. Con Gmail conectado, envía el reporte a un buzón de prueba y verifica remitente y los dos adjuntos: PDF y CSV.
 10. En Configuración prueba la clave actual y confirma que la UI nunca muestra su valor.
 11. Con Gemini conectado, selecciona **OCR** y carga un PDF escaneado de prueba. Confirma `Extracción: OCR` y revisa manualmente todas las cifras; se realiza una llamada por página.
+12. Pregunta “¿Qué indican mi ROA y ROE?” y confirma `Recuperación: indicadores calculados`; esta ruta no usa embeddings.
+13. Pregunta “¿Cuáles fueron las ventas?” y confirma `Recuperación: coincidencia en el PDF` y una evidencia que empieza por `[Pagina ...]`.
+14. Formula una pregunta conceptualmente relacionada pero sin palabras literales. Si Gemini tiene cuota, confirma `similitud semántica`; al repetirla debe aparecer `caché reutilizada`.
 
 ## 6. Pruebas automatizadas
 
@@ -119,7 +122,7 @@ En <http://localhost:5000> selecciona el experimento `agente-riesgo-financiero`.
 .\.venv\Scripts\python.exe -m pytest tests -q
 ```
 
-Resultado de esta entrega: `68 passed`. Además se verificaron contra el proveedor real Gemini Normal, OCR y chat ROA. Gmail OAuth se verificó con pruebas herméticas del consentimiento, cifrado, renovación, MIME con PDF/CSV, endpoints y fallos. MLflow se verificó con pruebas de trazas exitosas, fallidas, privacidad de valores y tolerancia a indisponibilidad. La advertencia deprecada de ReportLab pertenece a una dependencia. En algunos Windows restringidos, pytest puede mostrar al salir un aviso de permisos sobre su directorio temporal después de completar correctamente las pruebas.
+Resultado de esta entrega: `80 passed`. Además se verificaron contra el proveedor real Gemini Normal, OCR y chat ROA. El RAG graduado se verificó con rutas estructurada/literal/semántica/sin evidencia, reducción de llamadas, cache compatible, aislamiento por propietario y metadata privada. Gmail OAuth se verificó con pruebas herméticas del consentimiento, cifrado, renovación, MIME con PDF/CSV, endpoints y fallos. MLflow se verificó con pruebas de trazas exitosas, fallidas, privacidad de valores y tolerancia a indisponibilidad. La advertencia deprecada de ReportLab pertenece a una dependencia. En algunos Windows restringidos, pytest puede mostrar al salir un aviso de permisos sobre su directorio temporal después de completar correctamente las pruebas.
 
 ## 7. Archivos para subir
 

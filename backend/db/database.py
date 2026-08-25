@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS analyses (
     alertas_json TEXT NOT NULL,
     resumen TEXT NOT NULL,
     chunks_json TEXT NOT NULL,
+    embeddings_json TEXT NOT NULL DEFAULT '[]',
     extraction_mode TEXT NOT NULL DEFAULT 'normal'
 );
 
@@ -69,6 +70,10 @@ def init_db() -> None:
             conn.execute(
                 "ALTER TABLE analyses ADD COLUMN extraction_mode TEXT NOT NULL DEFAULT 'normal'"
             )
+        if "embeddings_json" not in columns:
+            conn.execute(
+                "ALTER TABLE analyses ADD COLUMN embeddings_json TEXT NOT NULL DEFAULT '[]'"
+            )
 
 
 def guardar_analisis(
@@ -80,14 +85,15 @@ def guardar_analisis(
     alertas: list,
     resumen: str,
     chunks: list | None = None,
+    embeddings: list[list[float]] | None = None,
     extraction_mode: str = "normal",
 ) -> None:
     with get_connection() as conn:
         conn.execute(
             """INSERT INTO analyses
                (id, filename, created_at, created_by, cifras_json, indicadores_json,
-                alertas_json, resumen, chunks_json, extraction_mode)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                alertas_json, resumen, chunks_json, embeddings_json, extraction_mode)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 analysis_id,
                 filename,
@@ -98,9 +104,24 @@ def guardar_analisis(
                 json.dumps(alertas),
                 resumen,
                 json.dumps(chunks or []),
+                json.dumps(embeddings or []),
                 extraction_mode,
             ),
         )
+
+
+def actualizar_embeddings(
+    analysis_id: str,
+    created_by: str,
+    embeddings: list[list[float]],
+) -> bool:
+    """Persist a cache only when the authenticated actor owns the analysis."""
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "UPDATE analyses SET embeddings_json = ? WHERE id = ? AND created_by = ?",
+            (json.dumps(embeddings), analysis_id, created_by),
+        )
+        return cursor.rowcount == 1
 
 
 def guardar_pregunta(

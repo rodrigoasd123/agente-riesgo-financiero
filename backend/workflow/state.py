@@ -16,6 +16,9 @@ class AgentState(TypedDict, total=False):
     # --- Resultado de extraccion (nodo extractor) ---
     raw_text: str
     chunks: List[str]
+    document_chunks: List[str]
+    structured_chunks: List[str]
+    document_embeddings: List[List[float]]
     cifras: dict
 
     # --- Resultado de calculo (nodo indicadores) ---
@@ -32,6 +35,9 @@ class AgentState(TypedDict, total=False):
     respuesta: Optional[str]
     fuente: Optional[str]
     _fragmentos_relevantes: List[str]
+    retrieval_route: str
+    retrieval_confidence: float
+    retrieval_cache_hit: bool
 
     # --- Metadatos ---
     analysis_id: Optional[str]

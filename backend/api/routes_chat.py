@@ -9,10 +9,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.auth.dependencies import get_current_user
-from backend.agent.financial_context import construir_fragmentos_financieros
+from backend.agent.financial_context import construir_fragmentos_indicadores
 from backend.agent.moderation import MENSAJE_BLOQUEO, contiene_termino_bloqueado
 from backend.config import MAX_CHAT_LENGTH
-from backend.db.database import guardar_pregunta, obtener_analisis
+from backend.db.database import actualizar_embeddings, guardar_pregunta, obtener_analisis
 from backend.observability.tracing import agent_run
 from backend.workflow.graph import qa_graph
 
@@ -29,6 +29,9 @@ class ChatResponse(BaseModel):
     respuesta: str
     fuente: str | None
     encontrado: bool
+    retrieval_route: str
+    retrieval_confidence: float
+    retrieval_cache_hit: bool
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -43,25 +46,36 @@ def chat(
         # 404 evita confirmar la existencia de recursos de otro actor.
         raise HTTPException(status_code=404, detail="Analisis no encontrado")
 
-    chunks = json.loads(analisis["chunks_json"] or "[]")
-    contexto_estructurado = construir_fragmentos_financieros(
-        json.loads(analisis["cifras_json"] or "{}"),
+    document_chunks = json.loads(analisis["chunks_json"] or "[]")
+    cached_embeddings = json.loads(analisis.get("embeddings_json") or "[]")
+    structured_chunks = construir_fragmentos_indicadores(
         json.loads(analisis["indicadores_json"] or "{}"),
         json.loads(analisis["alertas_json"] or "[]"),
     )
-    # Se agrega al final para conservar como primera cita el PDF cuando ambas
-    # fuentes contienen la misma cifra; indicadores derivados siguen disponibles.
-    chunks.extend(contexto_estructurado)
-    if not chunks:
+    if not document_chunks and not structured_chunks:
         raise HTTPException(status_code=409, detail="El analisis no contiene texto consultable")
 
     with agent_run(run_name=f"chat-{payload.analysis_id}"):
-        resultado = qa_graph.invoke({"pregunta": payload.pregunta, "chunks": chunks})
+        resultado = qa_graph.invoke(
+            {
+                "pregunta": payload.pregunta,
+                "document_chunks": document_chunks,
+                "structured_chunks": structured_chunks,
+                "document_embeddings": cached_embeddings,
+            }
+        )
+
+    resulting_embeddings = resultado.get("document_embeddings", [])
+    if resulting_embeddings and resulting_embeddings != cached_embeddings:
+        actualizar_embeddings(payload.analysis_id, current_user, resulting_embeddings)
 
     response = ChatResponse(
         respuesta=resultado.get("respuesta", ""),
         fuente=resultado.get("fuente"),
         encontrado=bool(resultado.get("encontrado")),
+        retrieval_route=resultado.get("retrieval_route", "sin_evidencia"),
+        retrieval_confidence=float(resultado.get("retrieval_confidence", 0)),
+        retrieval_cache_hit=bool(resultado.get("retrieval_cache_hit")),
     )
     guardar_pregunta(
         analysis_id=payload.analysis_id,

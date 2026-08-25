@@ -12,25 +12,38 @@ Aplicacion local que procesa estados financieros sinteticos en PDF, calcula rati
 - Upload PDF limitado (10 MB por defecto), validado por extension y firma `%PDF-`, con temporal UUID y cleanup garantizado.
 - Gemini mediante `google-genai`, `gemini-3.6-flash`, `gemini-embedding-001`, timeout y extraccion Pydantic estructurada.
 - Fallback offline para extraccion, resumen y retrieval cuando falta red, cuota o API key.
-- 68 pruebas unitarias/de integracion, incluido OAuth/Gmail, E2E Gemini/OCR, reportes, guardrails, autorizacion y privacidad de trazas.
+- 80 pruebas unitarias/de integracion, incluido RAG graduado, cache semantica, migracion SQLite, OAuth/Gmail, E2E Gemini/OCR, reportes, guardrails, autorizacion y privacidad de trazas.
 - Configuracion de Gemini 3.6 Flash desde la UI, con prueba real de generación y sin volver a mostrar la clave.
 - VAN, TIR, recuperacion y flujo acumulado sobre flujos ingresados explicitamente.
 - Reportes CSV/PDF; cada correo adjunta ambos archivos mediante Gmail API, con fallbacks Resend/SMTP y guardrail configurable de lenguaje.
 - Selector de extraccion **Normal / OCR**; ambos métodos alimentan al mismo agente Gemini.
+- RAG graduado: indicadores calculados, coincidencia literal en PDF, similitud semantica con embeddings cacheados y aclaracion segura.
 
-Las especificaciones ejecutadas estan en `specs/000-project-completion-security-gemini/` hasta `specs/005-mlflow-observability/`.
+Las especificaciones ejecutadas estan en `specs/000-project-completion-security-gemini/` hasta `specs/006-graduated-rag-embedding-cache/`.
 
 ## Arquitectura
 
 ```text
 Streamlit -> JWT -> FastAPI -> LangGraph
                               |-- extraer PDF -> ratios -> alertas -> resumen
-                              `-- retrieval -> responder | aclarar
+                              `-- indicadores -> literal -> semantica
+                                                   |-> responder | aclarar
                                       |
                        Gemini (opcional) + SQLite + MLflow
 ```
 
 Los nodos de `backend/workflow/nodes/` son adaptadores delgados. Extraccion, calculos, alertas y QA viven en `backend/agent/` y se prueban sin montar el grafo.
+
+### Recuperacion graduada y consumo de cuota
+
+Las preguntas siguen la ruta mas barata que pueda producir evidencia suficiente:
+
+1. Consultas explicitas de ROA, ROE, margen, liquidez y otros indicadores usan datos calculados, sin embeddings.
+2. Los hechos del estado financiero se buscan por palabras en los fragmentos PDF, sin embeddings.
+3. Solo si lo anterior no alcanza se usa similitud semantica. Los vectores del documento se calculan una vez y se guardan asociados al analisis; las preguntas posteriores solo generan el vector de la consulta.
+4. Si no hay evidencia suficiente o Gemini no puede generar embeddings, LangGraph deriva a aclaracion en vez de inventar.
+
+La UI muestra la ruta, confianza y si se reutilizo la cache. MLflow registra esos metadatos, nunca el texto, pregunta, cifras, respuesta o embeddings. Los analisis creados antes de esta version reciben la nueva columna automaticamente y pueden crear la cache de forma diferida.
 
 ## Instalacion en Windows
 

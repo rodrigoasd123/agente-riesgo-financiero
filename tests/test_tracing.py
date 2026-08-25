@@ -92,3 +92,26 @@ def test_tracker_failure_does_not_change_node_result(monkeypatch):
         return {"answer": 42}
 
     assert node({"question": "test"}) == {"answer": 42}
+
+
+def test_retrieval_metadata_is_allowlisted_and_content_free(monkeypatch):
+    tracker = FakeTracker()
+    _activate_fake_tracker(monkeypatch, tracker)
+
+    tracing.log_retrieval_metadata("semantica", 0.82, 2, True)
+
+    assert tracker.params == {"retrieval_route": "semantica"}
+    assert tracker.metrics["retrieval_confidence"] == 0.82
+    assert tracker.metrics["retrieval_result_count"] == 2
+    assert tracker.metrics["retrieval_cache_hit"] == 1
+    assert "private document" not in repr(tracker.params)
+
+
+def test_retrieval_metadata_rejects_unknown_route(monkeypatch):
+    tracker = FakeTracker()
+    _activate_fake_tracker(monkeypatch, tracker)
+
+    tracing.log_retrieval_metadata("user-controlled-content", 1, 1, False)
+
+    assert tracker.params == {}
+    assert tracker.metrics == {}
