@@ -28,3 +28,4 @@
 - Live application: API `1.6.0`, migration column present, frontend/backend healthy.
 - Live chat: route `estructurada`, confidence `1.0`, two grounded fragments.
 - Live MLflow: finished run with route, confidence, result count and cache flag.
+- Release: commit `0d38bd4` synchronized to private `origin/master`.

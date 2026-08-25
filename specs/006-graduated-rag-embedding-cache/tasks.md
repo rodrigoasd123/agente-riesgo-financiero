@@ -9,4 +9,4 @@
 - [x] **T-021** Run focused and complete verification. `[AC-001..AC-006]`
 - [x] **T-030** Update documentation and record evidence. `[FR-004, FR-006]`
 - [x] **T-031** Restart and smoke-test the local application.
-- [ ] **T-032** Commit and synchronize the private repository.
+- [x] **T-032** Commit and synchronize the private repository.
