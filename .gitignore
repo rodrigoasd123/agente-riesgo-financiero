@@ -1,0 +1,29 @@
+# Entorno virtual
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Secretos locales (nunca versionar)
+.env
+.env.*
+!.env.example
+
+# MLflow local
+mlruns/
+mlartifacts/
+
+# Base de datos generada en uso real
+backend/db/*.db
+*.db
+
+# Archivos de PDFs subidos temporalmente
+backend/tmp_uploads/
+tmp/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Sistema operativo
+.DS_Store
+mlflow.db

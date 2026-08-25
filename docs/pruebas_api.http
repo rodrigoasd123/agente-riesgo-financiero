@@ -1,0 +1,98 @@
+@baseUrl = http://localhost:8000
+@analysisId = REEMPLAZAR_TRAS_ANALIZAR
+@token = REEMPLAZAR_CON_ACCESS_TOKEN
+
+### Salud
+GET {{baseUrl}}/health
+
+### Login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "admin123"
+}
+
+### Estado Gemini/Gmail/correo (no expone secretos)
+GET {{baseUrl}}/settings/status
+Authorization: Bearer {{token}}
+
+### Analizar PDF normal (VS Code REST Client)
+POST {{baseUrl}}/analyze
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=Boundary
+
+--Boundary
+Content-Disposition: form-data; name="extraction_mode"
+
+normal
+--Boundary
+Content-Disposition: form-data; name="file"; filename="estado.pdf"
+Content-Type: application/pdf
+
+< ../data/estado_financiero_ejemplo.pdf
+--Boundary--
+
+### Para OCR cambia `normal` por `ocr`; requiere Gemini probado y admite hasta OCR_MAX_PAGES.
+
+### Probar clave Gemini configurada
+POST {{baseUrl}}/settings/gemini/test
+Authorization: Bearer {{token}}
+
+### Probar clave Resend guardada
+POST {{baseUrl}}/settings/resend/test
+Authorization: Bearer {{token}}
+
+### Preparar URL OAuth de Gmail (requiere Client ID/Secret guardados)
+POST {{baseUrl}}/settings/gmail/authorize
+Authorization: Bearer {{token}}
+
+### Probar autorización Gmail guardada
+POST {{baseUrl}}/settings/gmail/test
+Authorization: Bearer {{token}}
+
+### Calcular escenario
+POST {{baseUrl}}/analyses/{{analysisId}}/projection
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "initial_investment": "100000",
+  "cash_flows": ["30000", "35000", "40000", "45000"],
+  "discount_rate_percent": "10"
+}
+
+### Preguntar por ROA
+POST {{baseUrl}}/chat
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "analysis_id": "{{analysisId}}",
+  "pregunta": "¿Para qué sirve el ROA?"
+}
+
+### Descargar CSV con escenario
+POST {{baseUrl}}/analyses/{{analysisId}}/report/csv
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "initial_investment": "100000",
+  "cash_flows": ["30000", "35000", "40000", "45000"],
+  "discount_rate_percent": "10"
+}
+
+### Descargar PDF sin escenario
+POST {{baseUrl}}/analyses/{{analysisId}}/report/pdf
+Authorization: Bearer {{token}}
+
+### Enviar reporte (prioridad Gmail, fallback Resend/SMTP)
+POST {{baseUrl}}/analyses/{{analysisId}}/email
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "recipient": "analista@example.com"
+}

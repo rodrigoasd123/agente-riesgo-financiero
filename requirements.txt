@@ -1,0 +1,40 @@
+# --- Backend API ---
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+pydantic==2.9.2
+python-dotenv==1.0.1
+
+# --- Seguridad / Auth ---
+bcrypt==4.2.0
+pyjwt==2.9.0
+cryptography==50.0.0
+
+# --- Orquestacion del agente ---
+langgraph==0.2.34
+langchain-core==0.3.9
+
+# --- LLM (Gemini, gratuito) ---
+google-genai==1.75.0
+
+# --- Extraccion de PDF ---
+pdfplumber==0.11.4
+PyMuPDF==1.24.10
+
+# --- Busqueda semantica (RAG) ---
+numpy==1.26.4
+faiss-cpu==1.8.0.post1
+
+# --- Observabilidad ---
+mlflow==2.16.2
+
+# --- Frontend ---
+streamlit==1.38.0
+requests==2.34.2
+
+# --- Utilidades para datos de ejemplo ---
+reportlab==4.2.2
+
+# --- Tests ---
+pytest==8.3.3
+httpx==0.28.1
