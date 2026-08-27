@@ -20,7 +20,7 @@ from backend.agent.gemini_client import (
     stored_api_key,
     test_api_key,
 )
-from backend.auth.dependencies import get_current_user
+from backend.auth.dependencies import CurrentUser, get_current_user, require_admin
 from backend.config import BASE_DIR, FRONTEND_URL, GEMINI_MODEL, OCR_MAX_PAGES
 from backend.email_service import (
     RESEND_MESSAGES,
@@ -101,8 +101,20 @@ def _status() -> dict:
 
 
 @router.get("/status")
-def settings_status(_: Annotated[str, Depends(get_current_user)]) -> dict:
+def settings_status(_: Annotated[CurrentUser, Depends(require_admin)]) -> dict:
     return _status()
+
+
+@router.get("/capabilities")
+def capabilities(_: Annotated[str, Depends(get_current_user)]) -> dict:
+    configured = is_gemini_configured()
+    return {
+        "gemini_available": configured and _connected is True,
+        "ocr_available": configured and _connected is True,
+        "ocr_max_pages": OCR_MAX_PAGES,
+        "email_configured": email_provider() is not None,
+        "email_provider": email_provider(),
+    }
 
 
 def _test(candidate: str | None = None) -> dict:
@@ -122,7 +134,7 @@ def _test(candidate: str | None = None) -> dict:
 
 
 @router.post("/gemini/test")
-def test_current_key(_: Annotated[str, Depends(get_current_user)]) -> dict:
+def test_current_key(_: Annotated[CurrentUser, Depends(require_admin)]) -> dict:
     candidate = stored_api_key()
     _test(candidate)
     configure_api_key(candidate)
@@ -130,7 +142,7 @@ def test_current_key(_: Annotated[str, Depends(get_current_user)]) -> dict:
 
 
 @router.post("/gemini")
-def save_gemini_key(payload: GeminiKeyRequest, _: Annotated[str, Depends(get_current_user)]) -> dict:
+def save_gemini_key(payload: GeminiKeyRequest, _: Annotated[CurrentUser, Depends(require_admin)]) -> dict:
     candidate = payload.api_key.strip()
     _test(candidate)
     with _lock:
@@ -160,7 +172,7 @@ def _validate_sender(value: str) -> str:
 
 
 @router.post("/resend/test")
-def test_current_resend(_: Annotated[str, Depends(get_current_user)]) -> dict:
+def test_current_resend(_: Annotated[CurrentUser, Depends(require_admin)]) -> dict:
     candidate, sender = stored_resend_settings()
     sender = _validate_sender(sender)
     _test_resend(candidate)
@@ -169,7 +181,7 @@ def test_current_resend(_: Annotated[str, Depends(get_current_user)]) -> dict:
 
 
 @router.post("/resend")
-def save_resend(payload: ResendKeyRequest, _: Annotated[str, Depends(get_current_user)]) -> dict:
+def save_resend(payload: ResendKeyRequest, _: Annotated[CurrentUser, Depends(require_admin)]) -> dict:
     candidate = payload.api_key.strip()
     sender = _validate_sender(payload.from_email)
     _test_resend(candidate)
@@ -190,7 +202,7 @@ def _gmail_error(exc: GmailError, status_code: int = 422) -> HTTPException:
 @router.post("/gmail/credentials")
 def save_gmail_credentials(
     payload: GmailCredentialsRequest,
-    _: Annotated[str, Depends(get_current_user)],
+    _: Annotated[CurrentUser, Depends(require_admin)],
 ) -> dict:
     global _gmail_connected
     client_id = payload.client_id.strip()
@@ -211,7 +223,7 @@ def save_gmail_credentials(
 
 
 @router.post("/gmail/authorize")
-def authorize_gmail(_: Annotated[str, Depends(get_current_user)]) -> dict:
+def authorize_gmail(_: Annotated[CurrentUser, Depends(require_admin)]) -> dict:
     try:
         authorization_url = create_authorization_url()
     except GmailError as exc:
@@ -248,7 +260,7 @@ def gmail_callback(
 
 
 @router.post("/gmail/test")
-def test_current_gmail(_: Annotated[str, Depends(get_current_user)]) -> dict:
+def test_current_gmail(_: Annotated[CurrentUser, Depends(require_admin)]) -> dict:
     global _gmail_connected, _gmail_last_tested_at
     try:
         account_email = test_gmail_connection()
@@ -265,7 +277,7 @@ def test_current_gmail(_: Annotated[str, Depends(get_current_user)]) -> dict:
 
 
 @router.delete("/gmail")
-def remove_gmail(_: Annotated[str, Depends(get_current_user)]) -> dict:
+def remove_gmail(_: Annotated[CurrentUser, Depends(require_admin)]) -> dict:
     global _gmail_connected, _gmail_last_tested_at
     with _lock:
         set_key(str(BASE_DIR / ".env"), "GMAIL_REFRESH_TOKEN", "", quote_mode="never")

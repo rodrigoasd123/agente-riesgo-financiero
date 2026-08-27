@@ -8,6 +8,8 @@ import time
 import jwt
 import pytest
 
+import backend.db.database as database
+
 from backend.auth.security import (
     verify_password,
     create_access_token,
@@ -16,6 +18,12 @@ from backend.auth.security import (
 )
 from backend.config import ADMIN_PASSWORD_HASH
 from backend.config import JWT_ALGORITHM, JWT_AUDIENCE, JWT_ISSUER, JWT_SECRET_KEY
+
+
+@pytest.fixture(autouse=True)
+def security_database(tmp_path, monkeypatch):
+    monkeypatch.setattr(database, "DB_PATH", str(tmp_path / "auth.db"))
+    database.init_db()
 
 
 def test_password_correcta_verifica_ok():
@@ -40,6 +48,7 @@ def test_jwt_roundtrip():
     token = create_access_token("admin")
     payload = decode_access_token(token)
     assert payload["sub"] == "admin"
+    assert payload["role"] == "admin"
     assert payload["type"] == "access"
     assert payload["iss"]
     assert payload["aud"]
@@ -64,6 +73,7 @@ def test_jwt_audiencia_incorrecta_falla():
     token = jwt.encode(
         {
             "sub": "admin",
+            "role": "admin",
             "type": "access",
             "iss": JWT_ISSUER,
             "aud": "otra-api",
@@ -84,6 +94,7 @@ def test_jwt_tipo_incorrecto_falla():
     token = jwt.encode(
         {
             "sub": "admin",
+            "role": "admin",
             "type": "refresh",
             "iss": JWT_ISSUER,
             "aud": JWT_AUDIENCE,
@@ -96,4 +107,24 @@ def test_jwt_tipo_incorrecto_falla():
         algorithm=JWT_ALGORITHM,
     )
     with pytest.raises(jwt.InvalidTokenError):
+        decode_access_token(token)
+
+
+def test_jwt_sin_rol_falla():
+    now = int(time.time())
+    token = jwt.encode(
+        {
+            "sub": "admin",
+            "type": "access",
+            "iss": JWT_ISSUER,
+            "aud": JWT_AUDIENCE,
+            "iat": now,
+            "nbf": now,
+            "exp": now + 60,
+            "jti": "test-missing-role",
+        },
+        JWT_SECRET_KEY,
+        algorithm=JWT_ALGORITHM,
+    )
+    with pytest.raises(jwt.MissingRequiredClaimError):
         decode_access_token(token)

@@ -1,9 +1,9 @@
-"""bcrypt para credenciales y JWT Bearer con claims cerrados."""
+"""bcrypt, JWT Bearer con claims cerrados y sesiones persistentes."""
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Literal, Optional
 from uuid import uuid4
 
 import bcrypt
@@ -11,22 +11,16 @@ import jwt
 
 from backend.config import (
     ADMIN_PASSWORD_HASH,
-    ADMIN_USERNAME,
+    ANALYST_PASSWORD_HASH,
     JWT_ALGORITHM,
     JWT_AUDIENCE,
     JWT_EXPIRE_MINUTES,
     JWT_ISSUER,
     JWT_SECRET_KEY,
 )
+from backend.db.database import crear_sesion, normalize_username, obtener_usuario
 
-
-_USERS_DB = {
-    ADMIN_USERNAME: {
-        "username": ADMIN_USERNAME,
-        "hashed_password": ADMIN_PASSWORD_HASH,
-        "role": "admin",
-    }
-}
+Role = Literal["admin", "analyst"]
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -43,28 +37,47 @@ def hash_password(plain_password: str) -> str:
 
 
 def authenticate_user(username: str, password: str) -> Optional[dict]:
-    user = _USERS_DB.get(username)
+    user = obtener_usuario(normalize_username(username))
     # La comprobacion dummy reduce la diferencia temporal entre usuario inexistente y password incorrecto.
-    password_hash = user["hashed_password"] if user else ADMIN_PASSWORD_HASH
+    password_hash = user["password_hash"] if user else ADMIN_PASSWORD_HASH
     valid_password = verify_password(password, password_hash)
-    if user is None or not valid_password:
+    if user is None or not bool(user["is_active"]) or not valid_password:
         return None
     return {"username": user["username"], "role": user["role"]}
 
 
-def create_access_token(username: str, expires_minutes: int = JWT_EXPIRE_MINUTES) -> str:
+def create_access_token(
+    username: str,
+    role: Role = "admin",
+    expires_minutes: int = JWT_EXPIRE_MINUTES,
+    *,
+    jti: str | None = None,
+) -> str:
     now = datetime.now(timezone.utc)
     payload = {
-        "sub": username,
+        "sub": normalize_username(username),
+        "role": role,
         "type": "access",
         "iss": JWT_ISSUER,
         "aud": JWT_AUDIENCE,
         "iat": now,
         "nbf": now,
         "exp": now + timedelta(minutes=expires_minutes),
-        "jti": str(uuid4()),
+        "jti": jti or str(uuid4()),
     }
     return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+
+
+def issue_access_token(
+    username: str,
+    role: Role,
+    expires_minutes: int = JWT_EXPIRE_MINUTES,
+) -> str:
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(minutes=expires_minutes)
+    jti = str(uuid4())
+    crear_sesion(jti, username, expires_at)
+    return create_access_token(username, role, expires_minutes, jti=jti)
 
 
 def decode_access_token(token: str) -> dict:
@@ -74,14 +87,24 @@ def decode_access_token(token: str) -> dict:
         algorithms=[JWT_ALGORITHM],
         issuer=JWT_ISSUER,
         audience=JWT_AUDIENCE,
-        options={"require": ["sub", "type", "iss", "aud", "iat", "nbf", "exp", "jti"]},
+        options={"require": ["sub", "role", "type", "iss", "aud", "iat", "nbf", "exp", "jti"]},
     )
     if payload.get("type") != "access":
         raise jwt.InvalidTokenError("Tipo de token invalido")
+    if payload.get("role") not in {"admin", "analyst"}:
+        raise jwt.InvalidTokenError("Rol de token invalido")
+    if not isinstance(payload.get("sub"), str) or not payload["sub"]:
+        raise jwt.InvalidTokenError("Sujeto de token invalido")
+    if not isinstance(payload.get("jti"), str) or not payload["jti"]:
+        raise jwt.InvalidTokenError("Sesion de token invalida")
     return payload
 
 
 def validate_auth_configuration() -> None:
-    cost = int(ADMIN_PASSWORD_HASH.split("$")[2])
-    if cost < 12:
-        raise RuntimeError("ADMIN_PASSWORD_HASH debe usar costo bcrypt 12 o superior")
+    for variable, password_hash in (
+        ("ADMIN_PASSWORD_HASH", ADMIN_PASSWORD_HASH),
+        ("ANALYST_PASSWORD_HASH", ANALYST_PASSWORD_HASH),
+    ):
+        cost = int(password_hash.split("$")[2])
+        if cost < 12:
+            raise RuntimeError(f"{variable} debe usar costo bcrypt 12 o superior")

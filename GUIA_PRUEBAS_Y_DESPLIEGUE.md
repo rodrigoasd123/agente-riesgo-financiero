@@ -15,9 +15,11 @@ Si `.env` ya existe, no ejecutes `setup_env.py --force`: reemplazaría el secret
 
 Credenciales de demostración:
 
-- Usuario: `admin`
-- Contraseña: `admin123`
+- Administrador: `admin` / `admin123`
+- Analista: `analista` / `analista123`
 - El servidor compara la contraseña contra bcrypt costo 12; no almacena texto plano.
+
+Después de entrar como administrador, crea cuentas de compañeros en **Configuración > Usuarios y roles**. Usa el rol **Analista** para quienes sólo deben analizar documentos y enviar reportes. Cada contraseña nueva requiere al menos 12 caracteres. Al desactivar un usuario se revocan todas sus sesiones abiertas.
 
 ## 2. Configurar Gemini
 
@@ -115,6 +117,10 @@ En <http://localhost:5000> selecciona el experimento `agente-riesgo-financiero`.
 12. Pregunta “¿Qué indican mi ROA y ROE?” y confirma `Recuperación: indicadores calculados`; esta ruta no usa embeddings.
 13. Pregunta “¿Cuáles fueron las ventas?” y confirma `Recuperación: coincidencia en el PDF` y una evidencia que empieza por `[Pagina ...]`.
 14. Formula una pregunta conceptualmente relacionada pero sin palabras literales. Si Gemini tiene cuota, confirma `similitud semántica`; al repetirla debe aparecer `caché reutilizada`.
+15. En **Usuarios y roles**, crea un analista, cierra sesión y entra con esa cuenta. Confirma que puede analizar/reportar, que no aparece Configuración y que `/settings/status` responde `403`.
+16. Cierra sesión como analista e intenta reutilizar su JWT desde REST Client: debe responder `401`. Reactiva el usuario como administrador sólo si necesitas continuar probando.
+17. Entra como `analista/analista123`, analiza un PDF y abre **Dashboard**. Verifica estructura financiera, ventas, resultados, ratios y alertas; después calcula una proyección para habilitar el gráfico combinado de flujo y acumulado.
+18. Prueba el dashboard con un PDF parcial: cada sección sin datos debe explicarlo y no debe mostrar valores cero inventados.
 
 ## 6. Pruebas automatizadas
 
@@ -122,7 +128,7 @@ En <http://localhost:5000> selecciona el experimento `agente-riesgo-financiero`.
 .\.venv\Scripts\python.exe -m pytest tests -q
 ```
 
-Resultado de esta entrega: `80 passed`. Además se verificaron contra el proveedor real Gemini Normal, OCR y chat ROA. El RAG graduado se verificó con rutas estructurada/literal/semántica/sin evidencia, reducción de llamadas, cache compatible, aislamiento por propietario y metadata privada. Gmail OAuth se verificó con pruebas herméticas del consentimiento, cifrado, renovación, MIME con PDF/CSV, endpoints y fallos. MLflow se verificó con pruebas de trazas exitosas, fallidas, privacidad de valores y tolerancia a indisponibilidad. La advertencia deprecada de ReportLab pertenece a una dependencia. En algunos Windows restringidos, pytest puede mostrar al salir un aviso de permisos sobre su directorio temporal después de completar correctamente las pruebas.
+Resultado de esta entrega: `96 passed`. Se verificaron ambos bootstraps bcrypt, RBAC, sesiones revocables, datasets/gráficos del dashboard, datos parciales, logout, desactivación, tokens obsoletos y aislamiento, además de Gemini Normal/OCR/chat, RAG graduado, Gmail OAuth, reportes y MLflow. La advertencia deprecada de ReportLab pertenece a una dependencia. En algunos Windows restringidos, pytest puede mostrar al salir un aviso de permisos sobre su directorio temporal después de completar correctamente las pruebas.
 
 ## 7. Archivos para subir
 
@@ -135,4 +141,4 @@ git status --short
 git check-ignore .env .venv mlflow.db
 ```
 
-Para un despliegue público todavía se requieren HTTPS, secret manager, rate limiting, RBAC multiusuario, cifrado/backup y sandbox/antivirus para PDFs. Esta entrega está preparada como aplicación local/académica, no como sistema de decisión crediticia de producción.
+Para un despliegue público todavía se requieren HTTPS, secret manager, rate limiting distribuido, MFA/recuperación, cifrado/backup y sandbox/antivirus para PDFs. Esta entrega está preparada como aplicación local/académica, no como sistema de decisión crediticia de producción.

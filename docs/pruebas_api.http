@@ -14,9 +14,46 @@ Content-Type: application/json
   "password": "admin123"
 }
 
+### Login analista de demostración
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "username": "analista",
+  "password": "analista123"
+}
+
 ### Estado Gemini/Gmail/correo (no expone secretos)
 GET {{baseUrl}}/settings/status
 Authorization: Bearer {{token}}
+
+### Identidad de la sesión
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{token}}
+
+### Crear analista (sólo admin)
+POST {{baseUrl}}/auth/users
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "username": "analista1",
+  "password": "Analista-1234",
+  "role": "analyst"
+}
+
+### Listar usuarios (sólo admin; nunca devuelve hashes)
+GET {{baseUrl}}/auth/users
+Authorization: Bearer {{token}}
+
+### Desactivar analista y revocar todas sus sesiones (sólo admin)
+PATCH {{baseUrl}}/auth/users/analista1/active
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "is_active": false
+}
 
 ### Analizar PDF normal (VS Code REST Client)
 POST {{baseUrl}}/analyze
@@ -96,3 +133,7 @@ Content-Type: application/json
 {
   "recipient": "analista@example.com"
 }
+
+### Cerrar sesión y revocar este JWT
+POST {{baseUrl}}/auth/logout
+Authorization: Bearer {{token}}

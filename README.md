@@ -6,20 +6,22 @@ Aplicacion local que procesa estados financieros sinteticos en PDF, calcula rati
 
 ## Estado
 
-- JWT Bearer con firma HS256, expiracion y claims validados (`iss`, `aud`, `sub`, `type`, `iat`, `nbf`, `exp`, `jti`).
-- Usuario local `admin`; password de demo `admin123`, comparado solo contra el hash bcrypt costo 12 proporcionado.
-- Todos los endpoints de negocio exigen JWT y filtran datos por propietario.
+- JWT Bearer con firma HS256, rol, expiracion, `jti` persistente y claims validados (`iss`, `aud`, `sub`, `role`, `type`, `iat`, `nbf`, `exp`, `jti`).
+- Usuarios SQLite persistentes con roles `admin`/`analyst`; `admin/admin123` y `analista/analista123` se crean idempotentemente desde hashes bcrypt costo 12 proporcionados.
+- Sesiones revocables: logout y desactivacion invalidan tokens inmediatamente; los endpoints de negocio filtran datos por propietario.
+- RBAC: sólo `admin` administra usuarios y configuración Gemini/correo; `analyst` usa análisis, chat, proyecciones, exportación y envío.
 - Upload PDF limitado (10 MB por defecto), validado por extension y firma `%PDF-`, con temporal UUID y cleanup garantizado.
 - Gemini mediante `google-genai`, `gemini-3.6-flash`, `gemini-embedding-001`, timeout y extraccion Pydantic estructurada.
 - Fallback offline para extraccion, resumen y retrieval cuando falta red, cuota o API key.
-- 80 pruebas unitarias/de integracion, incluido RAG graduado, cache semantica, migracion SQLite, OAuth/Gmail, E2E Gemini/OCR, reportes, guardrails, autorizacion y privacidad de trazas.
+- 96 pruebas unitarias/de integracion, incluido bootstrap seguro, dashboard, RBAC/sesiones revocables, RAG graduado, cache semantica, migracion SQLite, OAuth/Gmail, E2E Gemini/OCR, reportes, guardrails, autorizacion y privacidad de trazas.
 - Configuracion de Gemini 3.6 Flash desde la UI, con prueba real de generación y sin volver a mostrar la clave.
 - VAN, TIR, recuperacion y flujo acumulado sobre flujos ingresados explicitamente.
 - Reportes CSV/PDF; cada correo adjunta ambos archivos mediante Gmail API, con fallbacks Resend/SMTP y guardrail configurable de lenguaje.
 - Selector de extraccion **Normal / OCR**; ambos métodos alimentan al mismo agente Gemini.
 - RAG graduado: indicadores calculados, coincidencia literal en PDF, similitud semantica con embeddings cacheados y aclaracion segura.
+- Dashboard interactivo con estructura financiera, ventas, resultados, ratios, alertas y flujo de caja, usando únicamente datos calculados del análisis activo.
 
-Las especificaciones ejecutadas estan en `specs/000-project-completion-security-gemini/` hasta `specs/006-graduated-rag-embedding-cache/`.
+Las especificaciones ejecutadas estan en `specs/000-project-completion-security-gemini/` hasta `specs/008-analyst-bootstrap-dashboard/`.
 
 ## Arquitectura
 
@@ -81,6 +83,9 @@ python -m streamlit run frontend/app.py
 - API/Swagger: <http://localhost:8000/docs>
 - Health: <http://localhost:8000/health>
 - Login: `admin` / `admin123`
+- Login analista: `analista` / `analista123`
+
+El administrador puede crear cuentas desde **Configuración > Usuarios y roles**. Una contraseña nueva debe tener al menos 12 caracteres. Los analistas no ven Configuración y reciben `403` si intentan llamar esos endpoints directamente. Ambos roles pueden abrir **Dashboard**, pero sólo visualizan el análisis activo de su propia sesión.
 
 ### Ver las trazas de MLflow
 
@@ -112,6 +117,8 @@ Consulta [`GUIA_PRUEBAS_Y_DESPLIEGUE.md`](GUIA_PRUEBAS_Y_DESPLIEGUE.md) y las ll
 
 - `.env`, SQLite, MLflow, temporales y entornos virtuales estan ignorados por Git.
 - El algoritmo JWT esta fijado en el servidor; no se acepta desde configuracion ni desde el token.
+- Cada JWT referencia una sesión SQLite activa; cerrar sesión o desactivar al usuario revoca el acceso sin esperar la expiración.
+- El rol firmado se compara con el rol actual de la base en cada solicitud; un token con rol obsoleto se rechaza.
 - Login devuelve el mismo error para usuario o password incorrectos y ejecuta una comprobacion bcrypt tambien para usuarios inexistentes.
 - Chat e historial consultan por `(analysis_id, actor autenticado)`; un recurso ajeno devuelve 404.
 - Los textos del PDF y del usuario se tratan como no confiables; no controlan autorizacion, persistencia ni calculos.
@@ -134,10 +141,10 @@ Prioridad sugerida para una siguiente spec:
 3. **Sensibilidad de escenarios**: curvas VAN/tasa, caso base/optimista/pesimista y Monte Carlo con supuestos visibles.
 4. **OCR para PDFs escaneados**: detectar paginas sin texto y usar OCR local antes de Gemini. Amplia mucho la cobertura de documentos reales.
 5. **Revision humana y expediente**: estados `borrador/revisado/aprobado`, comentarios y bitacora; el LLM recomienda, una persona decide.
-6. **Usuarios y roles persistentes**: tabla de usuarios, rotacion de passwords, roles analista/admin y revocacion de sesiones. Necesario antes de uso multiusuario.
+6. **MFA, recuperación y rotación de credenciales**: completar el ciclo de vida de cuentas antes de una exposición pública.
 7. **Cache de embeddings por documento**: reduce latencia y consumo de cuota en preguntas repetidas.
 
-No recomiendo integrar SBS/SMV ni datos reales hasta completar RBAC, retencion/borrado, cifrado de base de datos, backup/restore y una evaluacion legal de tratamiento de datos.
+No recomiendo integrar SBS/SMV ni datos reales hasta completar MFA/recuperación, retencion/borrado, cifrado de base de datos, backup/restore y una evaluacion legal de tratamiento de datos.
 
 ## Fuentes tecnicas
 

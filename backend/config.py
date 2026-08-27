@@ -61,6 +61,15 @@ ADMIN_PASSWORD_HASH = _env("ADMIN_PASSWORD_HASH")
 if not re.fullmatch(r"\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}", ADMIN_PASSWORD_HASH):
     raise RuntimeError("ADMIN_PASSWORD_HASH no tiene un formato bcrypt valido")
 
+# Analista local de la demo; se inserta de forma idempotente y nunca sobrescribe cuentas existentes.
+ANALYST_USERNAME = _env("ANALYST_USERNAME", "analista")
+ANALYST_PASSWORD_HASH = _env(
+    "ANALYST_PASSWORD_HASH",
+    "$2a$12$voQ1vS2PpkR5Do3rPCaFJ.SmOygaLYvRP1qHKbpkMKtzr/.ugiJv6",
+)
+if not re.fullmatch(r"\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}", ANALYST_PASSWORD_HASH):
+    raise RuntimeError("ANALYST_PASSWORD_HASH no tiene un formato bcrypt valido")
+
 # Persistencia, limites y operacion.
 _db_path = Path(os.getenv("DB_PATH", "backend/db/analisis.db"))
 DB_PATH = str(_db_path if _db_path.is_absolute() else BASE_DIR / _db_path)

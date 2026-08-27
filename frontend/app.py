@@ -9,6 +9,21 @@ import requests
 import streamlit as st
 from dotenv import load_dotenv
 
+from frontend.dashboard import (
+    alert_rows,
+    alerts_chart,
+    cashflow_chart,
+    cashflow_rows,
+    funding_chart,
+    funding_rows,
+    indicator_chart,
+    indicator_rows,
+    numeric_value,
+    ordered_bar_chart,
+    results_rows,
+    sales_rows,
+)
+
 
 load_dotenv()
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
@@ -18,6 +33,7 @@ st.set_page_config(page_title="Agente de Riesgo Financiero", page_icon="📊", l
 
 for key, default in {
     "token": None,
+    "current_user": None,
     "analysis": None,
     "chat_history": [],
     "projection": None,
@@ -73,7 +89,9 @@ def login() -> None:
     if submitted:
         response = api("POST", "/auth/login", json={"username": username, "password": password})
         if response is not None and response.status_code == 200:
-            st.session_state.token = response.json()["access_token"]
+            data = response.json()
+            st.session_state.token = data["access_token"]
+            st.session_state.current_user = {"username": data["username"], "role": data["role"]}
             st.rerun()
         elif response is not None:
             st.error("Usuario o contraseña incorrectos.")
@@ -81,7 +99,7 @@ def login() -> None:
 
 def analysis_tab() -> None:
     st.header("Análisis del estado financiero")
-    status_response = api("GET", "/settings/status")
+    status_response = api("GET", "/settings/capabilities")
     settings = status_response.json() if status_response is not None and status_response.status_code == 200 else {}
     extraction_label = st.radio(
         "Método de extracción",
@@ -260,7 +278,7 @@ def reports_tab() -> None:
             st.download_button("Descargar PDF", st.session_state.pdf_report, file_name="reporte_financiero.pdf", mime="application/pdf", use_container_width=True)
 
     st.subheader("Enviar por correo")
-    status = api("GET", "/settings/status")
+    status = api("GET", "/settings/capabilities")
     email_status = status.json() if status and status.status_code == 200 else {}
     email_ready = bool(email_status.get("email_configured"))
     if email_ready:
@@ -269,7 +287,7 @@ def reports_tab() -> None:
         st.info("Conecta Gmail en Configuración. Usa HTTPS y sólo requiere autorizar la cuenta una vez.")
     with st.form("email_form"):
         recipient = st.text_input("Destinatario", placeholder="analista@empresa.com")
-        send = st.form_submit_button("Enviar PDF", disabled=not email_ready)
+        send = st.form_submit_button("Enviar PDF y CSV", disabled=not email_ready)
     if send:
         body = {"recipient": recipient, "projection": payload}
         response = api("POST", f"/analyses/{analysis['analysis_id']}/email", json=body, timeout=60)
@@ -277,6 +295,89 @@ def reports_tab() -> None:
             st.success("Reportes PDF y CSV enviados en el mismo correo.")
         elif response is not None:
             show_api_error(response)
+
+
+def dashboard_tab() -> None:
+    st.header("Dashboard financiero interactivo")
+    st.caption(
+        "Explora relaciones entre cifras calculadas. Los gráficos no sustituyen la revisión humana ni constituyen una decisión crediticia."
+    )
+    analysis = st.session_state.analysis
+    if not analysis:
+        st.info("Analiza un estado financiero para habilitar el dashboard.")
+        return
+
+    cifras = analysis.get("cifras") or {}
+    indicadores = analysis.get("indicadores") or {}
+    alertas = analysis.get("alertas") or []
+    st.caption(f"Documento activo: {analysis['filename']}")
+
+    liquidity = numeric_value(indicadores.get("liquidez_corriente"))
+    debt = numeric_value(indicadores.get("endeudamiento_total"))
+    roa = numeric_value(indicadores.get("roa"))
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    kpi1.metric("Liquidez corriente", "Sin dato" if liquidity is None else f"{liquidity:.2f}x")
+    kpi2.metric("Endeudamiento", "Sin dato" if debt is None else f"{debt * 100:.2f}%")
+    kpi3.metric("ROA", "Sin dato" if roa is None else f"{roa * 100:.2f}%")
+    kpi4.metric("Alertas", len(alertas))
+
+    funding = funding_rows(cifras)
+    sales = sales_rows(cifras)
+    results = results_rows(cifras)
+    left, right = st.columns(2)
+    with left:
+        if funding:
+            st.altair_chart(funding_chart(funding), use_container_width=True)
+        else:
+            st.info("Estructura financiera no disponible: se requieren pasivo total y patrimonio.")
+    with right:
+        if len(sales) == 2:
+            st.altair_chart(
+                ordered_bar_chart(sales, "periodo", "Evolución de ventas"),
+                use_container_width=True,
+            )
+        else:
+            st.info("Comparación de ventas no disponible: se requieren dos periodos.")
+
+    if results:
+        st.altair_chart(
+            ordered_bar_chart(results, "concepto", "Ventas y resultados"),
+            use_container_width=True,
+        )
+    else:
+        st.info("No hay importes de ventas o utilidad para visualizar.")
+
+    multiples, percentages = indicator_rows(indicadores)
+    ratio_left, ratio_right = st.columns(2)
+    with ratio_left:
+        if multiples:
+            st.altair_chart(
+                indicator_chart(multiples, "Liquidez y cobertura", "Veces"),
+                use_container_width=True,
+            )
+        else:
+            st.info("No hay indicadores de liquidez o cobertura disponibles.")
+    with ratio_right:
+        if percentages:
+            st.altair_chart(
+                indicator_chart(percentages, "Rentabilidad, deuda y variación", "%"),
+                use_container_width=True,
+            )
+        else:
+            st.info("No hay indicadores porcentuales disponibles.")
+
+    safe_alerts = alert_rows(alertas)
+    if safe_alerts:
+        st.altair_chart(alerts_chart(safe_alerts), use_container_width=True)
+        st.caption("Rojo: alta · amarillo: media · azul: baja. Revisa el detalle en la pestaña Análisis.")
+    else:
+        st.success("No existen alertas financieras estructuradas para graficar.")
+
+    flows = cashflow_rows(st.session_state.projection)
+    if flows:
+        st.altair_chart(cashflow_chart(flows), use_container_width=True)
+    else:
+        st.info("Calcula un escenario en Proyecciones y reportes para visualizar su flujo de caja.")
 
 
 def settings_tab() -> None:
@@ -451,13 +552,63 @@ def settings_tab() -> None:
     if status["smtp_configured"] and not status.get("resend_configured"):
         st.caption("SMTP está configurado como alternativa; se usará sólo mientras Resend no esté activo.")
 
+    st.divider()
+    st.subheader("Usuarios y roles")
+    st.caption("Los analistas pueden analizar y enviar reportes; sólo los administradores pueden cambiar proveedores y usuarios.")
+    with st.form("create_user_form"):
+        new_username = st.text_input("Nuevo usuario", autocomplete="off")
+        new_password = st.text_input("Contraseña temporal (mínimo 12 caracteres)", type="password", autocomplete="new-password")
+        new_role = st.selectbox("Rol", ["analyst", "admin"], format_func=lambda value: "Analista" if value == "analyst" else "Administrador")
+        create_user_submitted = st.form_submit_button("Crear usuario")
+    if create_user_submitted:
+        response = api(
+            "POST",
+            "/auth/users",
+            json={"username": new_username, "password": new_password, "role": new_role},
+        )
+        if response is not None and response.status_code == 201:
+            st.success(f"Usuario {response.json()['username']} creado.")
+            st.rerun()
+        elif response is not None:
+            show_api_error(response)
+
+    users_response = api("GET", "/auth/users")
+    if users_response is not None and users_response.status_code == 200:
+        for user in users_response.json():
+            col_user, col_role, col_state, col_action = st.columns([3, 2, 2, 2])
+            col_user.write(user["username"])
+            col_role.write("Administrador" if user["role"] == "admin" else "Analista")
+            col_state.write("Activo" if user["is_active"] else "Inactivo")
+            is_self = user["username"] == st.session_state.current_user["username"]
+            action = "Desactivar" if user["is_active"] else "Activar"
+            if col_action.button(action, key=f"toggle-user-{user['username']}", disabled=is_self):
+                response = api(
+                    "PATCH",
+                    f"/auth/users/{user['username']}/active",
+                    json={"is_active": not user["is_active"]},
+                )
+                if response is not None and response.status_code == 200:
+                    st.rerun()
+                elif response is not None:
+                    show_api_error(response)
+
 
 def main() -> None:
     if st.session_state.token is None:
         login()
         return
+    if st.session_state.current_user is None:
+        response = api("GET", "/auth/me")
+        if response is None:
+            return
+        if response.status_code != 200:
+            show_api_error(response)
+            return
+        st.session_state.current_user = response.json()
+    identity = st.session_state.current_user
     st.sidebar.title("📊 Agente financiero")
-    st.sidebar.success("Sesión iniciada como admin")
+    role_label = "Administrador" if identity["role"] == "admin" else "Analista"
+    st.sidebar.success(f"Sesión: {identity['username']} · {role_label}")
     gmail_result = st.query_params.get("gmail")
     if gmail_result == "connected":
         st.sidebar.success("Gmail autorizado. Abre Configuración para comprobarlo.")
@@ -466,16 +617,24 @@ def main() -> None:
         st.sidebar.warning("La conexión con Gmail no se completó. Inténtalo nuevamente.")
         st.query_params.clear()
     if st.sidebar.button("Cerrar sesión"):
+        api("POST", "/auth/logout")
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.rerun()
-    tab_analysis, tab_reports, tab_settings = st.tabs(["📄 Análisis", "📈 Proyecciones y reportes", "⚙️ Configuración"])
+    labels = ["📄 Análisis", "📊 Dashboard", "📈 Proyecciones y reportes"]
+    if identity["role"] == "admin":
+        labels.append("⚙️ Configuración")
+    tabs = st.tabs(labels)
+    tab_analysis, tab_dashboard, tab_reports = tabs[:3]
     with tab_analysis:
         analysis_tab()
+    with tab_dashboard:
+        dashboard_tab()
     with tab_reports:
         reports_tab()
-    with tab_settings:
-        settings_tab()
+    if identity["role"] == "admin":
+        with tabs[3]:
+            settings_tab()
 
 
 main()
