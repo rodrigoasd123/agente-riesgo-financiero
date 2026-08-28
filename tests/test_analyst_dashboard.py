@@ -77,7 +77,11 @@ def test_dashboard_prepara_cifras_completas_sin_alterarlas():
     assert [row["valor"] for row in sales_rows(cifras)] == [1150000.0, 950000.0]
     assert [row["valor"] for row in results_rows(cifras)] == [950000.0, 80000.0, 45000.0]
     assert funding_chart(funding_rows(cifras)).to_dict()["mark"]["type"] == "arc"
-    assert ordered_bar_chart(sales_rows(cifras), "periodo", "Ventas").to_dict()["mark"]["type"] == "bar"
+    sales_spec = ordered_bar_chart(sales_rows(cifras), "periodo", "Ventas").to_dict()
+    assert sales_spec["mark"]["type"] == "bar"
+    assert sales_spec["encoding"]["color"]["field"] == "_sentido"
+    assert sales_spec["encoding"]["color"]["scale"]["range"] == ["#0d9488", "#d9535f"]
+    assert "params" not in sales_spec
 
 
 def test_dashboard_separa_unidades_de_indicadores():
@@ -92,7 +96,10 @@ def test_dashboard_separa_unidades_de_indicadores():
     )
     assert [row["valor"] for row in multiples] == [1.25, 2.5]
     assert [row["valor"] for row in percentages] == [70.0, 12.0, -17.39]
-    assert indicator_chart(multiples, "Ratios", "Veces").to_dict()["mark"]["type"] == "bar"
+    indicator_spec = indicator_chart(multiples, "Ratios", "Veces").to_dict()
+    assert indicator_spec["mark"]["type"] == "bar"
+    assert indicator_spec["encoding"]["color"]["field"] == "_sentido"
+    assert "params" not in indicator_spec
 
 
 def test_dashboard_alertas_allowlisted_y_flujo_sin_recalculo():
@@ -116,7 +123,9 @@ def test_dashboard_alertas_allowlisted_y_flujo_sin_recalculo():
         {"periodo": 0, "flujo": -100000.0, "flujo_acumulado": -100000.0},
         {"periodo": 1, "flujo": 60000.0, "flujo_acumulado": -40000.0},
     ]
-    assert len(cashflow_chart(rows).to_dict()["layer"]) == 2
+    cashflow_spec = cashflow_chart(rows).to_dict()
+    assert len(cashflow_spec["layer"]) == 2
+    assert cashflow_spec["layer"][0]["encoding"]["color"]["field"] == "_sentido"
 
 
 def test_dashboard_datos_parciales_no_inventan_ceros():

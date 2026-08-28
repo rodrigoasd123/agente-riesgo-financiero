@@ -23,6 +23,7 @@ from frontend.dashboard import (
     results_rows,
     sales_rows,
 )
+from frontend.theme import context_strip, inject_theme, section_eyebrow, sidebar_brand
 
 
 load_dotenv()
@@ -30,6 +31,7 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
 TIMEOUT = 30
 AI_TIMEOUT = 75
 st.set_page_config(page_title="Agente de Riesgo Financiero", page_icon="📊", layout="wide")
+inject_theme()
 
 for key, default in {
     "token": None,
@@ -80,12 +82,40 @@ def show_api_error(response) -> None:
 
 
 def login() -> None:
-    st.title("📊 Agente de análisis de riesgo financiero")
-    st.caption("Análisis explicable, escenarios de flujo de caja y reportes auditables")
-    with st.form("login_form"):
-        username = st.text_input("Usuario", value="admin")
-        password = st.text_input("Contraseña", type="password")
-        submitted = st.form_submit_button("Ingresar", type="primary")
+    st.markdown('<div class="auth-shell"></div>', unsafe_allow_html=True)
+    hero, access = st.columns([1.35, 0.85], gap="large")
+    with hero:
+        st.markdown('<div class="auth-kicker">Inteligencia financiera aplicada</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="auth-title">Decisiones más claras.<br><span>Riesgos visibles.</span></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="auth-lead">Convierte estados financieros en indicadores, alertas y escenarios auditables. '
+            'Cada respuesta conserva su evidencia y mantiene al analista en control.</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            """
+            <div class="feature-grid">
+                <div class="feature-card"><b>Indicadores</b><span>Liquidez, deuda y rentabilidad</span></div>
+                <div class="feature-card"><b>Evidencia</b><span>Respuestas vinculadas al documento</span></div>
+                <div class="feature-card"><b>Escenarios</b><span>VAN, TIR y recuperación</span></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with access:
+        st.markdown('<div class="login-panel-title">Bienvenido</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-panel-copy">Ingresa con tu cuenta para abrir el espacio de análisis.</div>', unsafe_allow_html=True)
+        with st.form("login_form"):
+            username = st.text_input("Usuario", value="admin", placeholder="Tu usuario")
+            password = st.text_input("Contraseña", type="password", placeholder="Tu contraseña")
+            submitted = st.form_submit_button("Ingresar al agente", type="primary", use_container_width=True)
+        st.markdown(
+            '<div class="legal-note">Herramienta de apoyo analítico. No sustituye la revisión profesional ni autoriza decisiones crediticias.</div>',
+            unsafe_allow_html=True,
+        )
     if submitted:
         response = api("POST", "/auth/login", json={"username": username, "password": password})
         if response is not None and response.status_code == 200:
@@ -98,7 +128,9 @@ def login() -> None:
 
 
 def analysis_tab() -> None:
+    section_eyebrow("Documento y evidencia")
     st.header("Análisis del estado financiero")
+    st.caption("Carga un documento, elige el método de lectura y obtén una evaluación trazable.")
     status_response = api("GET", "/settings/capabilities")
     settings = status_response.json() if status_response is not None and status_response.status_code == 200 else {}
     extraction_label = st.radio(
@@ -216,6 +248,7 @@ def parse_flows(raw: str) -> list[str]:
 
 
 def reports_tab() -> None:
+    section_eyebrow("Planeación financiera")
     st.header("Proyecciones y reportes")
     analysis = st.session_state.analysis
     if not analysis:
@@ -298,6 +331,7 @@ def reports_tab() -> None:
 
 
 def dashboard_tab() -> None:
+    section_eyebrow("Vista ejecutiva")
     st.header("Dashboard financiero interactivo")
     st.caption(
         "Explora relaciones entre cifras calculadas. Los gráficos no sustituyen la revisión humana ni constituyen una decisión crediticia."
@@ -381,6 +415,7 @@ def dashboard_tab() -> None:
 
 
 def settings_tab() -> None:
+    section_eyebrow("Administración segura")
     st.header("Configuración")
     status_response = api("GET", "/settings/status")
     if status_response is None or status_response.status_code != 200:
@@ -606,9 +641,9 @@ def main() -> None:
             return
         st.session_state.current_user = response.json()
     identity = st.session_state.current_user
-    st.sidebar.title("📊 Agente financiero")
+    sidebar_brand()
     role_label = "Administrador" if identity["role"] == "admin" else "Analista"
-    st.sidebar.success(f"Sesión: {identity['username']} · {role_label}")
+    st.sidebar.success(f"{identity['username']} · {role_label}")
     gmail_result = st.query_params.get("gmail")
     if gmail_result == "connected":
         st.sidebar.success("Gmail autorizado. Abre Configuración para comprobarlo.")
@@ -621,6 +656,10 @@ def main() -> None:
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.rerun()
+    context_items = [f"Sesión · {identity['username']}", f"Rol · {role_label}"]
+    if st.session_state.analysis:
+        context_items.append(f"Documento · {st.session_state.analysis['filename']}")
+    context_strip(context_items)
     labels = ["📄 Análisis", "📊 Dashboard", "📈 Proyecciones y reportes"]
     if identity["role"] == "admin":
         labels.append("⚙️ Configuración")

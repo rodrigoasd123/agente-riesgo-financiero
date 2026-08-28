@@ -7,7 +7,10 @@ from pathlib import Path
 from typing import Optional
 
 import pdfplumber
-import fitz
+try:
+    import fitz
+except ImportError:  # PyMuPDF puede estar bloqueado por la politica de paquetes del laboratorio.
+    fitz = None
 from pydantic import BaseModel, ConfigDict
 
 from backend.agent.gemini_client import generate_structured, transcribe_page_image
@@ -80,6 +83,8 @@ def _extraer_paginas(pdf_path: str) -> list[tuple[int, str]]:
 
 
 def _extraer_paginas_ocr(pdf_path: str) -> list[tuple[int, str]]:
+    if fitz is None:
+        raise RuntimeError("OCR no disponible: falta la dependencia PyMuPDF")
     if not Path(pdf_path).is_file():
         raise ValueError("El PDF no existe")
     paginas: list[tuple[int, str]] = []

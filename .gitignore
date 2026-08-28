@@ -1,6 +1,8 @@
 # Entorno virtual
 .venv/
+.venv-lab/
 venv/
+.lab-tmp/
 __pycache__/
 *.pyc
 

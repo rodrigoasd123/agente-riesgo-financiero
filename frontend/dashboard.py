@@ -41,6 +41,29 @@ ALERT_CODES = {
 }
 
 
+def _style_chart(chart):
+    return (
+        chart.configure_view(strokeOpacity=0)
+        .configure_axis(
+            labelColor="#50677d",
+            titleColor="#718398",
+            gridColor="#e6edf3",
+            domainColor="#dbe5ee",
+            labelFont="Segoe UI",
+            titleFont="Segoe UI",
+        )
+        .configure_title(
+            color="#102235",
+            font="Segoe UI",
+            fontSize=16,
+            fontWeight=600,
+            anchor="start",
+            offset=18,
+        )
+        .configure_legend(labelColor="#50677d", titleColor="#718398")
+    )
+
+
 def _number(value: Any) -> float | None:
     if isinstance(value, bool):
         return None
@@ -54,6 +77,28 @@ def _number(value: Any) -> float | None:
 def numeric_value(value: Any) -> float | None:
     """Convierte sólo escalares numéricos finitos para KPI y gráficos."""
     return _number(value)
+
+
+def _with_direction(rows: list[dict], value_key: str) -> list[dict]:
+    """Añade una categoría estable para colorear barras en Vega-Lite."""
+    return [
+        {
+            **row,
+            "_sentido": "positivo" if float(row[value_key]) >= 0 else "negativo",
+        }
+        for row in rows
+    ]
+
+
+def _direction_color(positive_color: str = "#0d9488") -> alt.Color:
+    return alt.Color(
+        "_sentido:N",
+        scale=alt.Scale(
+            domain=["positivo", "negativo"],
+            range=[positive_color, "#d9535f"],
+        ),
+        legend=None,
+    )
 
 
 def funding_rows(cifras: dict) -> list[dict]:
@@ -129,45 +174,48 @@ def cashflow_rows(projection: dict | None) -> list[dict]:
 
 
 def funding_chart(rows: list[dict]) -> alt.Chart:
-    return (
+    chart = (
         alt.Chart(alt.Data(values=rows))
         .mark_arc(innerRadius=55, outerRadius=105)
         .encode(
             theta=alt.Theta("valor:Q"),
             color=alt.Color(
                 "componente:N",
-                scale=alt.Scale(range=["#ef6c63", "#35a77a"]),
+                scale=alt.Scale(range=["#0f766e", "#22d3ee"]),
                 legend=alt.Legend(title=None),
             ),
             tooltip=[alt.Tooltip("componente:N"), alt.Tooltip("valor:Q", format=",.2f")],
         )
         .properties(title="Financiamiento de los activos", height=280)
     )
+    return _style_chart(chart)
 
 
 def ordered_bar_chart(rows: list[dict], category: str, title: str) -> alt.Chart:
-    return (
-        alt.Chart(alt.Data(values=rows))
+    chart_rows = _with_direction(rows, "valor")
+    chart = (
+        alt.Chart(alt.Data(values=chart_rows))
         .mark_bar(cornerRadiusEnd=5)
         .encode(
             x=alt.X(f"{category}:N", sort=alt.SortField("orden"), title=None),
             y=alt.Y("valor:Q", title="Importe"),
-            color=alt.condition("datum.valor >= 0", alt.value("#3976d2"), alt.value("#d95555")),
+            color=_direction_color(),
             tooltip=[alt.Tooltip(f"{category}:N"), alt.Tooltip("valor:Q", format=",.2f")],
         )
         .properties(title=title, height=280)
-        .interactive()
     )
+    return _style_chart(chart)
 
 
 def indicator_chart(rows: list[dict], title: str, unit: str) -> alt.Chart:
-    return (
-        alt.Chart(alt.Data(values=rows))
+    chart_rows = _with_direction(rows, "valor")
+    chart = (
+        alt.Chart(alt.Data(values=chart_rows))
         .mark_bar(cornerRadiusEnd=4)
         .encode(
             y=alt.Y("indicador:N", sort="-x", title=None),
             x=alt.X("valor:Q", title=unit),
-            color=alt.condition("datum.valor >= 0", alt.value("#4a78c2"), alt.value("#d95555")),
+            color=_direction_color("#168fa0"),
             tooltip=[
                 alt.Tooltip("indicador:N"),
                 alt.Tooltip("valor:Q", format=".2f"),
@@ -175,13 +223,13 @@ def indicator_chart(rows: list[dict], title: str, unit: str) -> alt.Chart:
             ],
         )
         .properties(title=title, height=max(220, len(rows) * 42))
-        .interactive()
     )
+    return _style_chart(chart)
 
 
 def alerts_chart(rows: list[dict]) -> alt.Chart:
-    colors = alt.Scale(domain=["alta", "media", "baja"], range=["#d95555", "#e3a52f", "#3b82c4"])
-    return (
+    colors = alt.Scale(domain=["alta", "media", "baja"], range=["#d9535f", "#d89a22", "#168fa0"])
+    chart = (
         alt.Chart(alt.Data(values=rows))
         .mark_bar(cornerRadiusEnd=4)
         .encode(
@@ -192,21 +240,23 @@ def alerts_chart(rows: list[dict]) -> alt.Chart:
         )
         .properties(title="Mapa de alertas", height=max(220, len(rows) * 38))
     )
+    return _style_chart(chart)
 
 
 def cashflow_chart(rows: list[dict]) -> alt.LayerChart:
-    data = alt.Data(values=rows)
+    data = alt.Data(values=_with_direction(rows, "flujo"))
     bars = alt.Chart(data).mark_bar(opacity=0.7).encode(
         x=alt.X("periodo:O", title="Periodo"),
         y=alt.Y("flujo:Q", title="Flujo del periodo"),
-        color=alt.condition("datum.flujo >= 0", alt.value("#35a77a"), alt.value("#d95555")),
+        color=_direction_color(),
         tooltip=[alt.Tooltip("periodo:O"), alt.Tooltip("flujo:Q", format=",.2f")],
     )
-    line = alt.Chart(data).mark_line(point=True, color="#f1b53a", strokeWidth=3).encode(
+    line = alt.Chart(data).mark_line(point=True, color="#d89a22", strokeWidth=3).encode(
         x=alt.X("periodo:O"),
         y=alt.Y("flujo_acumulado:Q", title="Flujo acumulado"),
         tooltip=[alt.Tooltip("periodo:O"), alt.Tooltip("flujo_acumulado:Q", format=",.2f")],
     )
-    return alt.layer(bars, line).resolve_scale(y="independent").properties(
+    chart = alt.layer(bars, line).resolve_scale(y="independent").properties(
         title="Flujo del periodo y acumulado", height=320
     )
+    return _style_chart(chart)
