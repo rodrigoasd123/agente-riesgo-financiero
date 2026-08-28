@@ -18,6 +18,8 @@ from frontend.dashboard import (
     funding_rows,
     indicator_chart,
     indicator_rows,
+    investment_evolution_chart,
+    investment_series_rows,
     numeric_value,
     ordered_bar_chart,
     results_rows,
@@ -38,12 +40,14 @@ for key, default in {
     "chat_history": [],
     "projection": None,
     "projection_payload": None,
+    "investment_sim": None,
     "csv_report": None,
     "pdf_report": None,
     "gmail_auth_url": None,
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
+
 
 
 def auth_headers() -> dict[str, str]:
@@ -295,6 +299,91 @@ def reports_tab() -> None:
             st.success("Reportes PDF y CSV enviados en el mismo correo.")
         elif response is not None:
             show_api_error(response)
+
+    st.divider()
+    st.subheader("💼 Simulación de Inversión y Excedente de Tesorería")
+    st.caption("Diagnostica el efectivo libre del estado financiero y simula rendimientos netos con interés compuesto, comisiones e impuestos.")
+
+    surplus_res = api("GET", f"/analyses/{analysis['analysis_id']}/treasury-surplus")
+    surplus_data = surplus_res.json() if surplus_res is not None and surplus_res.status_code == 200 else {}
+    
+    if surplus_data:
+        efectivo = float(surplus_data.get("efectivo_total") or 0)
+        reserva = float(surplus_data.get("reserva_operativa") or 0)
+        excedente = float(surplus_data.get("excedente_invertible") or 0)
+        
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Efectivo total en caja", f"${efectivo:,.2f}")
+        c2.metric("Reserva operativa (20%)", f"${reserva:,.2f}")
+        c3.metric("Excedente invertible sugerido", f"${excedente:,.2f}")
+        
+        perfiles = surplus_data.get("perfiles") or {}
+        st.caption(
+            f"Perfiles de colocación recomendados sobre el excedente: "
+            f"Conservador (30%): **${float(perfiles.get('conservador') or 0):,.2f}** · "
+            f"Moderado (60%): **${float(perfiles.get('moderado') or 0):,.2f}** · "
+            f"Dinámico (90%): **${float(perfiles.get('dinamico') or 0):,.2f}**"
+        )
+        default_capital = excedente if excedente > 0 else 10000.0
+    else:
+        default_capital = 10000.0
+
+    with st.form("investment_simulation_form"):
+        col_cap, col_monthly, col_horizon = st.columns(3)
+        capital_in = col_cap.number_input("Capital inicial a invertir ($)", min_value=1.0, value=float(default_capital), step=500.0)
+        aporte_in = col_monthly.number_input("Aporte mensual adicional ($)", min_value=0.0, value=0.0, step=100.0)
+        plazo_in = col_horizon.number_input("Plazo de inversión (meses)", min_value=1, max_value=360, value=12, step=1)
+
+        col_rate, col_freq, col_tax = st.columns(3)
+        tasa_in = col_rate.number_input("Tasa de rendimiento anual estimada (%)", min_value=-50.0, max_value=1000.0, value=10.0, step=0.5)
+        freq_in = col_freq.selectbox(
+            "Frecuencia de capitalización",
+            ["mensual", "trimestral", "semestral", "anual", "diaria"],
+            format_func=lambda x: x.capitalize(),
+        )
+        tax_in = col_tax.number_input("Impuesto a la ganancia de capital (%)", min_value=0.0, max_value=60.0, value=5.0, step=0.5)
+
+        col_com_in, col_com_out = st.columns(2)
+        com_in = col_com_in.number_input("Comisión de entrada / corretaje (%)", min_value=0.0, max_value=20.0, value=0.2, step=0.05)
+        com_out = col_com_out.number_input("Comisión de salida / rescate (%)", min_value=0.0, max_value=20.0, value=0.2, step=0.05)
+
+        run_sim = st.form_submit_button("Simular rendimiento de inversión", type="primary")
+
+    if run_sim:
+        sim_payload = {
+            "capital_inicial": str(Decimal(str(capital_in))),
+            "aporte_mensual": str(Decimal(str(aporte_in))),
+            "plazo_meses": int(plazo_in),
+            "tasa_anual_percent": str(Decimal(str(tasa_in))),
+            "frecuencia_capitalizacion": str(freq_in),
+            "comision_entrada_percent": str(Decimal(str(com_in))),
+            "comision_salida_percent": str(Decimal(str(com_out))),
+            "impuesto_ganancia_percent": str(Decimal(str(tax_in))),
+        }
+        with st.spinner("Calculando proyección financiera..."):
+            sim_res = api("POST", f"/analyses/{analysis['analysis_id']}/investment-simulation", json=sim_payload)
+        if sim_res is not None and sim_res.status_code == 200:
+            st.session_state.investment_sim = sim_res.json()
+            st.success("Simulación de inversión completada.")
+        elif sim_res is not None:
+            show_api_error(sim_res)
+
+    sim = st.session_state.investment_sim
+    if sim:
+        st.subheader("Resultados de la simulación")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Saldo final neto", f"${float(sim['saldo_final_neto']):,.2f}")
+        m2.metric("Ganancia neta total", f"${float(sim['ganancia_neta']):,.2f}")
+        m3.metric("Rendimiento neto (ROI)", f"{float(sim['roi_neto_percent']):.2f} %")
+        com_imp_total = float(sim['comisiones_totales']) + float(sim['impuestos_totales'])
+        m4.metric("Fricción (Comis. + Imp.)", f"${com_imp_total:,.2f}")
+
+        chart_rows = investment_series_rows(sim)
+        if chart_rows:
+            st.altair_chart(investment_evolution_chart(chart_rows), use_container_width=True)
+            with st.expander("Ver tabla mensual detallada"):
+                st.dataframe(chart_rows, use_container_width=True, hide_index=True)
+
 
 
 def dashboard_tab() -> None:
