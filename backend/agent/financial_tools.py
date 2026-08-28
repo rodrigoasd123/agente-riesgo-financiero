@@ -60,3 +60,111 @@ def calcular_escenario(initial_investment: Decimal, cash_flows: list[Decimal], d
         "periodo_recuperacion": _q(payback) if payback is not None else None,
         "flujos": rows,
     }
+
+
+def calcular_excedente_tesoreria(
+    cifras: dict,
+    factor_reserva_percent: Decimal = Decimal("20"),
+) -> dict:
+    """Calcula la caja operativa de seguridad y el excedente disponible para invertir."""
+    efectivo = Decimal(str(cifras.get("efectivo") or 0))
+    pasivo_corriente = Decimal(str(cifras.get("pasivo_corriente") or 0))
+    factor = max(Decimal(0), min(factor_reserva_percent, Decimal(100))) / Decimal(100)
+    reserva = _q(max(Decimal(0), pasivo_corriente * factor))
+    excedente = _q(max(Decimal(0), efectivo - reserva))
+    
+    return {
+        "efectivo_total": _q(efectivo),
+        "pasivo_corriente": _q(pasivo_corriente),
+        "factor_reserva_percent": _q(factor_reserva_percent),
+        "reserva_operativa": reserva,
+        "excedente_invertible": excedente,
+        "perfiles": {
+            "conservador": _q(excedente * Decimal("0.30")),
+            "moderado": _q(excedente * Decimal("0.60")),
+            "dinamico": _q(excedente * Decimal("0.90")),
+        },
+    }
+
+
+FRECUENCIAS_CAPITALIZACION = {
+    "diaria": 365,
+    "mensual": 12,
+    "trimestral": 4,
+    "semestral": 2,
+    "anual": 1,
+}
+
+
+def simular_inversion(
+    capital_inicial: Decimal,
+    plazo_meses: int,
+    tasa_anual_percent: Decimal,
+    frecuencia_capitalizacion: str = "mensual",
+    comision_entrada_percent: Decimal = Decimal(0),
+    comision_salida_percent: Decimal = Decimal(0),
+    impuesto_ganancia_percent: Decimal = Decimal(0),
+    aporte_mensual: Decimal = Decimal(0),
+) -> dict:
+    """Simula el crecimiento de capital con interés compuesto, comisiones e impuestos."""
+    if plazo_meses < 1:
+        raise ValueError("El plazo debe ser de al menos 1 mes.")
+    if capital_inicial < Decimal(0) or aporte_mensual < Decimal(0):
+        raise ValueError("Los importes de capital no pueden ser negativos.")
+    
+    frecuencia = frecuencia_capitalizacion.lower().strip()
+    m = FRECUENCIAS_CAPITALIZACION.get(frecuencia, 12)
+    r_anual_float = float(tasa_anual_percent) / 100.0
+    r_mensual_float = (1.0 + r_anual_float / m) ** (m / 12.0) - 1.0
+    r_mensual = Decimal(str(round(r_mensual_float, 10)))
+
+    comision_entrada = _q(capital_inicial * (max(Decimal(0), comision_entrada_percent) / Decimal(100)))
+    saldo = capital_inicial - comision_entrada
+    total_aportado = capital_inicial + (aporte_mensual * Decimal(plazo_meses))
+
+    series = []
+    series.append({
+        "mes": 0,
+        "capital_aportado": _q(capital_inicial),
+        "intereses_acumulados": Decimal("0.00"),
+        "saldo": _q(saldo),
+    })
+
+    for mes in range(1, plazo_meses + 1):
+        interes_mes = saldo * r_mensual
+        saldo += interes_mes + aporte_mensual
+        capital_aportado_mes = capital_inicial + (aporte_mensual * Decimal(mes))
+        intereses_acum = max(Decimal(0), saldo - capital_aportado_mes + comision_entrada)
+        series.append({
+            "mes": mes,
+            "capital_aportado": _q(capital_aportado_mes),
+            "intereses_acumulados": _q(intereses_acum),
+            "saldo": _q(saldo),
+        })
+
+    saldo_final_bruto = _q(saldo)
+    comision_salida = _q(saldo_final_bruto * (max(Decimal(0), comision_salida_percent) / Decimal(100)))
+    comisiones_totales = _q(comision_entrada + comision_salida)
+    
+    ganancia_bruta = max(Decimal(0), saldo_final_bruto - total_aportado)
+    impuestos_totales = _q(ganancia_bruta * (max(Decimal(0), impuesto_ganancia_percent) / Decimal(100)))
+    ganancia_neta = _q(saldo_final_bruto - total_aportado - comision_salida - impuestos_totales)
+    saldo_final_neto = _q(total_aportado + ganancia_neta)
+    roi_neto_percent = _q((ganancia_neta / total_aportado) * Decimal(100)) if total_aportado > 0 else Decimal(0)
+
+    return {
+        "capital_inicial": _q(capital_inicial),
+        "aporte_mensual": _q(aporte_mensual),
+        "plazo_meses": plazo_meses,
+        "tasa_anual_percent": _q(tasa_anual_percent),
+        "frecuencia_capitalizacion": frecuencia,
+        "total_aportado": _q(total_aportado),
+        "saldo_final_bruto": saldo_final_bruto,
+        "comisiones_totales": comisiones_totales,
+        "impuestos_totales": impuestos_totales,
+        "ganancia_neta": ganancia_neta,
+        "saldo_final_neto": saldo_final_neto,
+        "roi_neto_percent": roi_neto_percent,
+        "series": series,
+    }
+

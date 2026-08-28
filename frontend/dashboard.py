@@ -210,3 +210,38 @@ def cashflow_chart(rows: list[dict]) -> alt.LayerChart:
     return alt.layer(bars, line).resolve_scale(y="independent").properties(
         title="Flujo del periodo y acumulado", height=320
     )
+
+
+def investment_series_rows(simulation_result: dict | None) -> list[dict]:
+    rows = []
+    for item in (simulation_result or {}).get("series", []):
+        mes = _number(item.get("mes"))
+        capital = _number(item.get("capital_aportado"))
+        intereses = _number(item.get("intereses_acumulados"))
+        saldo = _number(item.get("saldo"))
+        if mes is not None and capital is not None and intereses is not None and saldo is not None:
+            rows.append({
+                "mes": int(mes),
+                "capital_aportado": capital,
+                "intereses_acumulados": intereses,
+                "saldo": saldo,
+            })
+    return rows
+
+
+def investment_evolution_chart(rows: list[dict]) -> alt.LayerChart:
+    data = alt.Data(values=rows)
+    capital_area = alt.Chart(data).mark_area(opacity=0.6, color="#3976d2").encode(
+        x=alt.X("mes:O", title="Mes"),
+        y=alt.Y("capital_aportado:Q", title="Importe Acumulado ($)"),
+        tooltip=[alt.Tooltip("mes:O", title="Mes"), alt.Tooltip("capital_aportado:Q", title="Capital Aportado", format=",.2f")],
+    )
+    saldo_line = alt.Chart(data).mark_line(color="#2ca02c", strokeWidth=3).encode(
+        x=alt.X("mes:O", title="Mes"),
+        y=alt.Y("saldo:Q", title="Saldo Total ($)"),
+        tooltip=[alt.Tooltip("mes:O", title="Mes"), alt.Tooltip("saldo:Q", title="Saldo Total con Rendimientos", format=",.2f")],
+    )
+    return alt.layer(capital_area, saldo_line).properties(
+        title="Evolución del Patrimonio (Capital Aportado vs Saldo Total)", height=320
+    ).interactive()
+
