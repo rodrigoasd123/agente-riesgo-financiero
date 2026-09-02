@@ -1,0 +1,544 @@
+AGENTE DE ANALISIS DE RIESGO FINANCIERO
+EXPLICACION COMPLETA DEL PROGRAMA
+
+1. PROPOSITO DE LA APLICACION
+
+La aplicacion esta dirigida a empresas y analistas que necesitan revisar estados
+financieros en PDF. Su objetivo es reducir el tiempo empleado en localizar cifras,
+calcular ratios y detectar senales de alerta.
+
+El sistema permite:
+
+- Extraer datos de estados financieros.
+- Calcular indicadores financieros.
+- Detectar riesgos mediante reglas verificables.
+- Generar un resumen ejecutivo con Google Gemini.
+- Responder preguntas utilizando evidencia del documento.
+- Visualizar indicadores en un dashboard interactivo.
+- Elaborar proyecciones de inversion.
+- Exportar resultados en PDF y CSV.
+- Enviar los reportes por correo.
+- Controlar el acceso mediante usuarios y roles.
+
+La herramienta apoya el trabajo del analista. No reemplaza a un contador, auditor
+o asesor financiero.
+
+
+2. ARQUITECTURA GENERAL
+
+El flujo general es:
+
+Usuario
+  -> Frontend Streamlit
+  -> API FastAPI protegida con JWT
+  -> Grafos LangGraph
+  -> Extraccion, calculos, alertas, Gemini y RAG
+  -> SQLite y MLflow
+  -> Dashboard, reportes PDF/CSV y correo
+
+La solucion esta dividida en los siguientes componentes:
+
+- Frontend: interfaz desarrollada con Streamlit.
+- Backend: API REST desarrollada con FastAPI.
+- Agente: flujo de ejecucion organizado mediante LangGraph.
+- Inteligencia artificial: Google Gemini.
+- Persistencia: SQLite.
+- Observabilidad: MLflow.
+
+
+3. TECNOLOGIAS UTILIZADAS
+
+Python
+Lenguaje principal del proyecto.
+
+Streamlit
+Framework utilizado para construir la interfaz web, los formularios, la carga de
+archivos, las preguntas y el dashboard.
+
+FastAPI
+Framework del backend. Expone los endpoints REST y aplica las dependencias de
+autenticacion y autorizacion.
+
+Uvicorn
+Servidor utilizado para ejecutar la aplicacion FastAPI.
+
+LangGraph
+Framework de orquestacion que representa el agente como grafos de estados, nodos
+y transiciones.
+
+Google Gemini
+Se utiliza para extraccion estructurada, OCR, generacion del resumen, respuestas
+fundamentadas y embeddings.
+
+pdfplumber y PyMuPDF
+pdfplumber extrae texto de archivos digitales. PyMuPDF renderiza las paginas para
+el modo OCR.
+
+Pydantic
+Valida la estructura y los tipos de los datos extraidos.
+
+SQLite
+Guarda usuarios, sesiones, analisis, preguntas y embeddings almacenados en cache.
+
+NumPy
+Calcula la similitud coseno empleada en la recuperacion semantica.
+
+Altair
+Genera los graficos financieros interactivos.
+
+ReportLab
+Genera los reportes descargables en PDF.
+
+MLflow
+Registra la ejecucion tecnica del agente, tiempos, rutas de recuperacion y errores.
+
+bcrypt
+Genera y verifica los hashes seguros de las contrasenas.
+
+PyJWT
+Crea y valida los tokens JWT.
+
+cryptography/Fernet
+Cifra credenciales sensibles persistidas, como el refresh token de Gmail.
+
+pytest
+Ejecuta las pruebas automatizadas del proyecto.
+
+
+4. FLUJO DE UN ANALISIS
+
+4.1 Inicio de sesion
+
+El usuario introduce su nombre y contrasena. El backend busca la cuenta en SQLite
+y compara la contrasena con el hash bcrypt. Si coincide, crea un JWT y registra
+una sesion asociada al identificador jti del token.
+
+El frontend envia posteriormente el token en el encabezado Authorization:
+
+Authorization: Bearer <token>
+
+4.2 Carga y validacion del PDF
+
+El usuario carga el documento. El backend comprueba la extension, la firma interna
+%PDF-, el tamano permitido y utiliza un nombre temporal seguro. El archivo temporal
+se elimina al terminar el procesamiento.
+
+4.3 Seleccion del metodo de extraccion
+
+Extraccion normal:
+Se utiliza pdfplumber para obtener el texto de un PDF digital.
+
+Extraccion OCR:
+PyMuPDF convierte las paginas en imagenes en memoria y Gemini transcribe su
+contenido. Esta opcion esta destinada a documentos escaneados o fotografiados.
+
+Normal y OCR solo determinan como se obtiene inicialmente la informacion. El
+agente sigue funcionando con Gemini en ambos casos.
+
+4.4 Extraccion estructurada
+
+Gemini identifica campos como:
+
+- Activo corriente y activo total.
+- Pasivo corriente y pasivo total.
+- Patrimonio.
+- Ventas.
+- Utilidad operativa y utilidad neta.
+- Inventarios.
+- Gastos financieros.
+- Efectivo disponible y datos de flujo de caja, si aparecen en el documento.
+
+Pydantic valida el resultado. Cuando Gemini no esta disponible, existe un mecanismo
+alternativo basado en reglas y expresiones regulares.
+
+4.5 Calculo y alertas
+
+Los ratios se calculan con Python. Gemini no decide los resultados numericos. Luego
+el sistema compara los valores con umbrales y genera alertas deterministicas.
+
+4.6 Resumen y persistencia
+
+Gemini redacta una explicacion ejecutiva basada en los datos calculados. El analisis
+se almacena en SQLite y queda asociado con el usuario que lo creo.
+
+
+5. LANGGRAPH Y LOS GRAFOS DEL AGENTE
+
+LangGraph permite modelar el agente mediante un StateGraph. La informacion viaja
+en un estado compartido denominado AgentState, definido con TypedDict.
+
+El estado puede contener:
+
+- Ruta y metodo de extraccion del PDF.
+- Texto, paginas y fragmentos.
+- Datos financieros estructurados.
+- Indicadores calculados.
+- Alertas.
+- Resumen.
+- Pregunta del usuario.
+- Evidencias recuperadas.
+- Respuesta final.
+- Errores y metadatos.
+
+5.1 Grafo de analisis
+
+extraer_pdf
+  -> calcular_indicadores
+  -> detectar_alertas
+  -> generar_resumen
+  -> FIN
+
+extraer_pdf obtiene el contenido y los campos financieros.
+
+calcular_indicadores aplica las formulas financieras.
+
+detectar_alertas compara los resultados con los umbrales definidos.
+
+generar_resumen utiliza Gemini para explicar los resultados.
+
+5.2 Grafo de preguntas
+
+recuperar_fragmentos
+  -> decision condicional
+     -> responder, cuando hay evidencia
+     -> aclarar, cuando la evidencia es insuficiente
+  -> FIN
+
+Este grafo contiene una bifurcacion condicional. No es un ciclo permanente. Una
+vez seleccionada la ruta, la ejecucion termina.
+
+5.3 Nodos delgados
+
+Los archivos terminados en _node.py reciben el estado, llaman a una funcion de la
+capa backend/agent y devuelven el estado actualizado. La logica financiera no vive
+dentro de los nodos. Esto permite probarla con pytest sin montar todo el grafo.
+
+5.4 Ventajas de LangGraph
+
+- Hace explicito el orden del proceso.
+- Mantiene un contrato de estado comun.
+- Permite decisiones condicionales.
+- Facilita agregar reintentos o revision humana.
+- Permite observar cada nodo con MLflow.
+
+
+6. INDICADORES FINANCIEROS
+
+Liquidez corriente = activo corriente / pasivo corriente
+Mide la capacidad de cubrir obligaciones de corto plazo.
+
+Prueba acida = (activo corriente - inventarios) / pasivo corriente
+Mide la capacidad de pago sin depender de la venta de inventarios.
+
+Capital de trabajo = activo corriente - pasivo corriente
+Representa los recursos disponibles para la operacion de corto plazo.
+
+Endeudamiento total = pasivo total / activo total
+Muestra que proporcion de los activos esta financiada con deuda.
+
+Deuda sobre patrimonio = pasivo total / patrimonio
+Compara los recursos de acreedores con los de los propietarios.
+
+Cobertura de intereses = utilidad operativa / gastos financieros
+Indica si la operacion puede cubrir sus intereses.
+
+Margen neto = utilidad neta / ventas
+Mide la ganancia final por cada unidad monetaria vendida.
+
+ROA = utilidad neta / activo total
+Mide la eficiencia con la que los activos generan utilidad.
+
+ROE = utilidad neta / patrimonio
+Mide el rendimiento obtenido sobre el capital de los accionistas.
+
+
+7. ALERTAS FINANCIERAS
+
+El sistema puede generar alertas ante condiciones como:
+
+- Liquidez corriente menor que 1.0.
+- Prueba acida menor que 0.8.
+- Endeudamiento total mayor que 0.60.
+- Cobertura de intereses menor que 1.5.
+- Margen neto negativo.
+- Caida de ventas superior al 10 por ciento.
+
+Estas alertas se generan mediante reglas de Python y no mediante una opinion libre
+del modelo de lenguaje.
+
+
+8. RAG DE RECUPERACION GRADUADA
+
+RAG significa Retrieval-Augmented Generation o generacion aumentada por
+recuperacion. Antes de responder, el sistema busca evidencia relevante dentro del
+PDF y de los indicadores calculados. Gemini recibe la pregunta junto con esa
+evidencia.
+
+La recuperacion utiliza tres niveles:
+
+8.1 Recuperacion estructurada
+
+Busca directamente indicadores, alertas y explicaciones calculadas por el sistema.
+Por ejemplo, una pregunta sobre el ROA recupera primero el valor estructurado del
+ROA.
+
+8.2 Recuperacion literal
+
+Busca fragmentos que compartan palabras importantes con la pregunta.
+
+8.3 Recuperacion semantica
+
+Gemini genera embeddings para la pregunta y los fragmentos. NumPy calcula la
+similitud coseno y selecciona los resultados mas cercanos.
+
+Variables principales:
+
+UMBRAL_RELEVANCIA_SIMPLE = 1
+Indica la cantidad minima de coincidencias para considerar relevante un fragmento
+en la busqueda simple.
+
+TOP_K = 3
+Limita la respuesta a los tres fragmentos mas relevantes.
+
+UMBRAL_SEMANTICO = 0.55
+Es la similitud minima para aceptar un fragmento semantico.
+
+Si no se obtiene evidencia suficiente, el grafo solicita aclaracion y no inventa
+una respuesta.
+
+
+9. USO DE LANGCHAIN Y FAISS
+
+langchain-core aparece instalado, pero el flujo principal no esta construido con
+cadenas de LangChain. El proyecto llama directamente a LangGraph, al SDK de Gemini,
+a NumPy y a SQLite.
+
+FAISS tambien puede aparecer entre las dependencias, pero no participa en la
+recuperacion actual. La busqueda vectorial se realiza con embeddings y similitud
+coseno calculada con NumPy.
+
+La explicacion correcta es:
+
+"Se utiliza LangGraph para orquestar el agente. LangChain Core esta disponible
+como dependencia, pero el RAG y las llamadas a Gemini se implementaron
+directamente."
+
+
+10. FUNCION DE GOOGLE GEMINI
+
+Gemini participa en:
+
+- Extraccion estructurada.
+- OCR de documentos escaneados.
+- Generacion del resumen financiero.
+- Respuesta a preguntas.
+- Generacion de embeddings.
+- Explicacion de indicadores y alertas.
+
+Los calculos financieros criticos se mantienen en Python. De esta forma, la IA
+extrae e interpreta, mientras el programa calcula y valida.
+
+Si Gemini falla, el sistema conserva los indicadores ya calculados, utiliza los
+mecanismos alternativos disponibles y muestra evidencia para revision manual.
+
+
+11. GUARDRAILS
+
+La aplicacion incluye controles como:
+
+- Filtro de lenguaje ofensivo en las preguntas.
+- Revision de la salida generada.
+- Respuestas limitadas a evidencia recuperada.
+- Separacion entre datos del documento e instrucciones.
+- Validacion de archivos PDF.
+- Limites de tamano.
+- Eliminacion de archivos temporales.
+- Evitar el registro de API keys, contrasenas y JWT.
+
+
+12. SEGURIDAD
+
+No se utiliza un framework independiente como Spring Security, Keycloak, Auth0 o
+Firebase Authentication. FastAPI es el framework del backend y sobre el se
+implemento una capa de seguridad propia.
+
+La respuesta recomendada para una exposicion es:
+
+"La aplicacion utiliza FastAPI como framework backend y una capa de seguridad
+propia con JWT para autenticacion, bcrypt para proteger contrasenas, sesiones
+persistentes y RBAC para controlar el acceso por roles."
+
+12.1 Contrasenas
+
+Las contrasenas se almacenan como hashes bcrypt con factor de costo 12. El hash no
+se descifra; durante el login bcrypt comprueba si la contrasena enviada coincide.
+
+12.2 JWT
+
+El token se firma con HS256 e incluye usuario, rol, emisor, audiencia, fechas de
+creacion y expiracion, tipo y un identificador unico jti.
+
+12.3 Sesiones persistentes
+
+El jti se registra en SQLite. Esto permite revocar la sesion cuando el usuario
+cierra sesion y verificar que el token siga activo.
+
+12.4 Roles
+
+Administrador:
+
+- Analiza documentos y consulta al agente.
+- Accede al dashboard, proyecciones y reportes.
+- Configura Gemini y Gmail.
+- Administra usuarios y configuraciones sensibles.
+
+Analista:
+
+- Analiza documentos y consulta al agente.
+- Accede al dashboard avanzado.
+- Genera proyecciones y reportes.
+- Descarga y envia reportes.
+- No administra usuarios ni configuraciones sensibles.
+
+12.5 Propiedad de los analisis
+
+Cada analisis queda asociado con su creador. Si otro usuario intenta acceder a un
+analisis ajeno, el backend lo trata como no encontrado.
+
+12.6 Cifrado adicional
+
+El refresh token de Gmail se cifra mediante Fernet antes de persistirse.
+
+
+13. BASE DE DATOS
+
+SQLite contiene tablas para:
+
+- users: usuarios, hashes, roles y estado.
+- auth_sessions: sesiones activas y revocadas.
+- analyses: resultados, indicadores y evidencias.
+- questions: preguntas y respuestas.
+
+SQLite es apropiado para una demostracion academica y ejecucion local. Para un
+entorno de produccion con mayor concurrencia se recomienda PostgreSQL.
+
+
+14. MLFLOW
+
+MLflow proporciona observabilidad. No mejora directamente la respuesta, pero ayuda
+a comprender como se ejecuto el agente.
+
+Registra datos tecnicos como:
+
+- Ejecuciones de analisis y chat.
+- Nodo ejecutado y duracion.
+- Modelo y version del prompt.
+- Ruta de recuperacion del RAG.
+- Confianza y cantidad de resultados.
+- Uso de cache.
+- Tipos de error.
+
+Por privacidad no debe registrar el texto completo del PDF, preguntas y respuestas
+completas, cifras financieras, embeddings, API keys, contrasenas o JWT.
+
+La interfaz local puede abrirse con:
+
+python -m mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5000
+
+Luego se consulta en http://localhost:5000.
+
+
+15. DASHBOARD
+
+El dashboard utiliza Altair para representar:
+
+- Liquidez.
+- Rentabilidad.
+- Endeudamiento.
+- Margenes.
+- ROA y ROE.
+- Alertas.
+- Comparacion con valores de referencia.
+- Flujo de caja cuando hay datos suficientes.
+
+Los graficos se construyen con datos estructurados y permitidos por el sistema, no
+con texto libre generado por Gemini.
+
+
+16. PROYECCION DE INVERSIONES
+
+El usuario puede ingresar una inversion inicial, una tasa de descuento y flujos
+esperados por periodo.
+
+El programa calcula:
+
+- VAN: valor actual neto de los flujos descontados.
+- TIR: tasa que hace que el VAN sea igual a cero.
+- Payback: periodo necesario para recuperar la inversion inicial.
+- Flujos acumulados.
+
+Estos valores se calculan de forma deterministica. Los flujos se introducen
+manualmente porque son supuestos futuros y no deben inventarse a partir del PDF.
+
+
+17. REPORTES Y CORREO
+
+El sistema genera un reporte PDF con indicadores, alertas, interpretaciones y
+proyecciones, ademas de un CSV con informacion tabular.
+
+Los proveedores contemplados para el correo son:
+
+1. Gmail API.
+2. Resend.
+3. SMTP como alternativa.
+
+Gmail utiliza OAuth 2.0 y el permiso gmail.send. Tras una autorizacion inicial, el
+refresh token permite renovar el acceso sin iniciar sesion en cada envio, mientras
+Google no revoque la autorizacion.
+
+
+18. FRONTEND STREAMLIT
+
+La interfaz incluye:
+
+- Inicio y cierre de sesion.
+- Carga del PDF.
+- Seleccion entre extraccion normal y OCR.
+- Visualizacion de indicadores y alertas.
+- Preguntas fundamentadas.
+- Dashboard interactivo.
+- Proyecciones.
+- Descarga de PDF y CSV.
+- Envio por correo.
+- Configuracion administrativa.
+- Verificacion del estado de Gemini y Gmail.
+
+Streamlit consume los endpoints de FastAPI y envia el JWT en cada operacion
+protegida.
+
+
+19. RESUMEN PARA EXPOSICION
+
+"Desarrollamos un agente de analisis de riesgo financiero que recibe estados
+financieros en PDF. La interfaz esta construida con Streamlit y se comunica con una
+API desarrollada en FastAPI. LangGraph organiza el proceso en nodos para extraccion,
+calculo de indicadores, deteccion de alertas y generacion del resumen. Gemini se
+utiliza para OCR, estructuracion, respuestas y embeddings, mientras que los
+calculos financieros se ejecutan de forma deterministica en Python. El agente usa
+RAG graduado para fundamentar sus respuestas y evitar alucinaciones. SQLite
+almacena usuarios, sesiones y analisis, y MLflow registra el comportamiento tecnico
+del flujo. Tambien incluye seguridad mediante JWT, bcrypt y RBAC, dashboards
+interactivos, proyecciones de VAN y TIR, y exportacion de reportes en PDF y CSV."
+
+
+20. IDEA CENTRAL
+
+Gemini extrae, interpreta y explica.
+Python calcula y valida.
+LangGraph controla el flujo.
+RAG aporta evidencia.
+FastAPI expone los servicios.
+Streamlit presenta la interfaz.
+SQLite conserva los datos.
+MLflow permite observar la ejecucion.
+
