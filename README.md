@@ -13,15 +13,17 @@ Aplicacion local que procesa estados financieros sinteticos en PDF, calcula rati
 - Upload PDF limitado (10 MB por defecto), validado por extension y firma `%PDF-`, con temporal UUID y cleanup garantizado.
 - Gemini mediante `google-genai`, `gemini-3.6-flash`, `gemini-embedding-001`, timeout y extraccion Pydantic estructurada.
 - Fallback offline para extraccion, resumen y retrieval cuando falta red, cuota o API key.
-- 96 pruebas unitarias/de integracion, incluido bootstrap seguro, dashboard, RBAC/sesiones revocables, RAG graduado, cache semantica, migracion SQLite, OAuth/Gmail, E2E Gemini/OCR, reportes, guardrails, autorizacion y privacidad de trazas.
+- Suite automatizada para bootstrap seguro, dashboard, RBAC/sesiones revocables, RAG graduado, cache semantica, migracion SQLite, OAuth/Gmail, Gemini/OCR, reportes, guardrails, simulacion financiera, autorizacion y privacidad de trazas.
 - Configuracion de Gemini 3.6 Flash desde la UI, con prueba real de generación y sin volver a mostrar la clave.
 - VAN, TIR, recuperacion y flujo acumulado sobre flujos ingresados explicitamente.
+- Simulador de inversion con TEA, TNA o tasa efectiva por periodo; capitalizacion diaria/mensual/bimestral/trimestral/cuatrimestral/semestral/anual, aportes, costos, impuestos, inflacion y resultados nominales/reales.
 - Reportes CSV/PDF; cada correo adjunta ambos archivos mediante Gmail API, con fallbacks Resend/SMTP y guardrail configurable de lenguaje.
 - Selector de extraccion **Normal / OCR**; ambos métodos alimentan al mismo agente Gemini.
 - RAG graduado: indicadores calculados, coincidencia literal en PDF, similitud semantica con embeddings cacheados y aclaracion segura.
 - Dashboard interactivo con estructura financiera, ventas, resultados, ratios, alertas y flujo de caja, usando únicamente datos calculados del análisis activo.
+- Pronostico de ventas de 1 a 12 meses: compara regresion lineal temporal con persistencia mediante backtesting, selecciona el menor MAE y muestra un rango orientativo sin usar Gemini.
 
-Las especificaciones ejecutadas estan en `specs/000-project-completion-security-gemini/` hasta `specs/008-analyst-bootstrap-dashboard/`.
+Las especificaciones ejecutadas y en curso estan versionadas en `specs/`, incluidas tesoreria, simulacion avanzada y pronostico mensual.
 
 ## Arquitectura
 
@@ -98,6 +100,8 @@ Con el backend detenido o usando otra terminal, abre la interfaz local:
 ```
 
 Visita <http://localhost:5000>, abre el experimento `agente-riesgo-financiero` y selecciona una ejecución `analisis-*` o `chat-*`. Para deshabilitar las trazas usa `MLFLOW_ENABLED=false` en `.env`. `mlflow.db` y `mlruns/` son artefactos locales y no se suben a GitHub.
+
+También puedes iniciar la interfaz con `powershell -ExecutionPolicy Bypass -File scripts/start_mlflow.ps1`. El administrador encontrará en **Configuración > Observabilidad con MLflow** un botón que abre `MLFLOW_UI_URL` (por defecto `http://localhost:5000`). El botón abre la interfaz, pero el proceso MLflow debe estar iniciado.
 
 Si `GEMINI_API_KEY` esta vacia, `/health` muestra `offline-fallback`; la demo sigue funcionando con el PDF sintetico de `data/`. Tambien puedes pegar la clave en **Configuracion > Nueva clave API de Gemini > Probar y guardar**: se valida, guarda en `.env` y activa sin reiniciar, pero nunca se recupera ni muestra.
 

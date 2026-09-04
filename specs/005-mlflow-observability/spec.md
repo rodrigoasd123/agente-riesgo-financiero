@@ -38,6 +38,7 @@ The agent records execution duration and input field names, but the rubric also 
 - **FR-001:** Each traced node must record duration, status, input field names/count, and output field names/count in its active MLflow run.
 - **FR-002:** A failed node must record failed status and the exception class before propagating the original exception.
 - **FR-003:** Operator documentation must explain how to start and inspect local MLflow.
+- **FR-004:** La configuración administrativa debe mostrar el estado, experimento y un enlace configurable a la interfaz MLflow.
 
 ### Non-functional
 
@@ -48,6 +49,7 @@ The agent records execution duration and input field names, but the rubric also 
 
 - **SEC-001:** Traces must never contain state values, raw PDF text, questions, credentials, tokens, extracted figures, summaries, or generated answers.
 - **SEC-002:** Tracing must remain disableable through `MLFLOW_ENABLED=false`.
+- **SEC-003:** El acceso se muestra solo en la pestaña administrativa y no debe afirmar que se registran nodos no ejecutados.
 
 ## Constraints and invariants
 

@@ -111,6 +111,25 @@ def funding_rows(cifras: dict) -> list[dict]:
 
 
 def sales_rows(cifras: dict) -> list[dict]:
+    monthly = []
+    for order, raw in enumerate(cifras.get("ventas_mensuales") or []):
+        value = _number(raw.get("ventas")) if isinstance(raw, dict) else None
+        month = str(raw.get("mes") or "").strip()[:20] if isinstance(raw, dict) else ""
+        period = str(raw.get("periodo") or "").strip()[:16] if isinstance(raw, dict) else ""
+        if value is not None and value >= 0 and month:
+            previous = monthly[-1]["valor"] if monthly else None
+            variation = None if previous in (None, 0) else ((value / previous) - 1) * 100
+            monthly.append(
+                {
+                    "periodo": f"{month[:3].capitalize()} {period[:4]}".strip(),
+                    "valor": value,
+                    "orden": order,
+                    "variacion_pct": variation,
+                }
+            )
+    if len(monthly) >= 2:
+        return monthly
+
     labels = {"ventas_periodo_anterior": "Periodo anterior", "ventas": "Periodo actual"}
     rows = []
     for order, key in enumerate(("ventas_periodo_anterior", "ventas")):
@@ -258,5 +277,150 @@ def cashflow_chart(rows: list[dict]) -> alt.LayerChart:
     )
     chart = alt.layer(bars, line).resolve_scale(y="independent").properties(
         title="Flujo del periodo y acumulado", height=320
+    )
+    return _style_chart(chart)
+
+
+def investment_series_rows(simulation_result: dict | None) -> list[dict]:
+    """Normaliza únicamente los campos financieros permitidos para el gráfico."""
+    rows = []
+    for item in (simulation_result or {}).get("series", []):
+        month = _number(item.get("mes"))
+        principal = _number(item.get("capital_aportado"))
+        gain = _number(item.get("ganancia_acumulada"))
+        balance = _number(item.get("saldo"))
+        if None not in (month, principal, gain, balance):
+            row = {
+                "mes": int(month),
+                "capital_aportado": principal,
+                "ganancia_acumulada": gain,
+                "saldo": balance,
+            }
+            real_balance = _number(item.get("saldo_real"))
+            if real_balance is not None:
+                row["saldo_real"] = real_balance
+            rows.append(row)
+    return rows
+
+
+def sales_trend_chart(rows: list[dict]) -> alt.Chart:
+    chart = (
+        alt.Chart(alt.Data(values=rows))
+        .mark_line(point=alt.OverlayMarkDef(filled=True, size=65), strokeWidth=3, color="#0f766e")
+        .encode(
+            x=alt.X("periodo:N", sort=alt.SortField("orden"), title="Mes"),
+            y=alt.Y("valor:Q", title="Ventas"),
+            tooltip=[
+                alt.Tooltip("periodo:N", title="Mes"),
+                alt.Tooltip("valor:Q", title="Ventas", format=",.2f"),
+                alt.Tooltip("variacion_pct:Q", title="Variación mensual", format="+.1f"),
+            ],
+        )
+        .properties(title="Evolución mensual de ventas", height=280)
+    )
+    return _style_chart(chart)
+
+
+def sales_forecast_rows(result: dict | None) -> list[dict]:
+    """Allowlist de la serie observada y futura; nunca incluye texto del PDF."""
+    rows = []
+    for order, item in enumerate((result or {}).get("historico") or []):
+        value = _number(item.get("ventas")) if isinstance(item, dict) else None
+        period = str(item.get("periodo") or "")[:7] if isinstance(item, dict) else ""
+        if value is not None and period:
+            rows.append({"periodo": period, "orden": order, "tipo": "Observado", "ventas": value})
+    offset = len(rows)
+    for index, item in enumerate((result or {}).get("pronostico") or []):
+        if not isinstance(item, dict):
+            continue
+        estimate = _number(item.get("ventas_estimadas"))
+        lower = _number(item.get("limite_inferior"))
+        upper = _number(item.get("limite_superior"))
+        period = str(item.get("periodo") or "")[:7]
+        if None not in (estimate, lower, upper) and period:
+            rows.append(
+                {
+                    "periodo": period,
+                    "orden": offset + index,
+                    "tipo": "Pronóstico",
+                    "ventas": estimate,
+                    "limite_inferior": lower,
+                    "limite_superior": upper,
+                }
+            )
+    return rows
+
+
+def sales_forecast_chart(rows: list[dict]) -> alt.LayerChart:
+    actual = [row for row in rows if row.get("tipo") == "Observado"]
+    forecast = [row for row in rows if row.get("tipo") == "Pronóstico"]
+    historical_line = alt.Chart(alt.Data(values=actual)).mark_line(
+        point=True, color="#0f766e", strokeWidth=3
+    ).encode(
+        x=alt.X("periodo:N", sort=alt.SortField("orden"), title="Mes"),
+        y=alt.Y("ventas:Q", title="Ventas"),
+        tooltip=[alt.Tooltip("periodo:N"), alt.Tooltip("ventas:Q", format=",.2f")],
+    )
+    forecast_band = alt.Chart(alt.Data(values=forecast)).mark_area(
+        color="#d89a22", opacity=0.18
+    ).encode(
+        x=alt.X("periodo:N", sort=alt.SortField("orden"), title="Mes"),
+        y=alt.Y("limite_inferior:Q", title="Ventas"),
+        y2="limite_superior:Q",
+    )
+    forecast_line = alt.Chart(alt.Data(values=forecast)).mark_line(
+        point=True, color="#d89a22", strokeWidth=3, strokeDash=[7, 4]
+    ).encode(
+        x=alt.X("periodo:N", sort=alt.SortField("orden"), title="Mes"),
+        y=alt.Y("ventas:Q", title="Ventas"),
+        tooltip=[
+            alt.Tooltip("periodo:N"),
+            alt.Tooltip("ventas:Q", title="Pronóstico", format=",.2f"),
+            alt.Tooltip("limite_inferior:Q", title="Límite inferior", format=",.2f"),
+            alt.Tooltip("limite_superior:Q", title="Límite superior", format=",.2f"),
+        ],
+    )
+    return _style_chart(
+        alt.layer(forecast_band, historical_line, forecast_line).properties(
+            title="Ventas observadas y pronóstico", height=340
+        )
+    )
+
+
+def investment_evolution_chart(rows: list[dict]) -> alt.LayerChart:
+    """Gráfico compatible con laboratorio: sin selección ni params Vega-Lite."""
+    data = alt.Data(values=rows)
+    principal = alt.Chart(data).mark_area(opacity=0.32, color="#168fa0").encode(
+        x=alt.X("mes:Q", title="Mes"),
+        y=alt.Y("capital_aportado:Q", title="Importe acumulado"),
+        tooltip=[
+            alt.Tooltip("mes:Q", title="Mes", format=".0f"),
+            alt.Tooltip("capital_aportado:Q", title="Capital aportado", format=",.2f"),
+        ],
+    )
+    balance = alt.Chart(data).mark_line(color="#d89a22", strokeWidth=3).encode(
+        x=alt.X("mes:Q", title="Mes"),
+        y=alt.Y("saldo:Q", title="Saldo bruto"),
+        tooltip=[
+            alt.Tooltip("mes:Q", title="Mes", format=".0f"),
+            alt.Tooltip("saldo:Q", title="Saldo bruto", format=",.2f"),
+            alt.Tooltip("ganancia_acumulada:Q", title="Ganancia acumulada", format=",.2f"),
+        ],
+    )
+    layers = [principal, balance]
+    if any("saldo_real" in row for row in rows):
+        real_balance = alt.Chart(data).mark_line(
+            color="#7c3aed", strokeWidth=2, strokeDash=[6, 4]
+        ).encode(
+            x=alt.X("mes:Q", title="Mes"),
+            y=alt.Y("saldo_real:Q", title="Saldo real"),
+            tooltip=[
+                alt.Tooltip("mes:Q", title="Mes", format=".0f"),
+                alt.Tooltip("saldo_real:Q", title="Saldo real", format=",.2f"),
+            ],
+        )
+        layers.append(real_balance)
+    chart = alt.layer(*layers).properties(
+        title="Capital aportado, saldo nominal y saldo real", height=320
     )
     return _style_chart(chart)

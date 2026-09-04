@@ -84,6 +84,12 @@ CORS_ORIGINS = [
 MLFLOW_ENABLED = _bool_env("MLFLOW_ENABLED", True)
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db").strip()
 MLFLOW_EXPERIMENT_NAME = os.getenv("MLFLOW_EXPERIMENT_NAME", "agente-riesgo-financiero").strip()
+_mlflow_ui_url = os.getenv("MLFLOW_UI_URL", "http://localhost:5000").strip()
+MLFLOW_UI_URL = (
+    _mlflow_ui_url
+    if _mlflow_ui_url.startswith(("http://", "https://"))
+    else "http://localhost:5000"
+)
 
 # Correo: el destino de infraestructura nunca proviene de una peticion HTTP.
 SMTP_HOST = os.getenv("SMTP_HOST", "").strip()

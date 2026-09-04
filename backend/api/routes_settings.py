@@ -21,7 +21,15 @@ from backend.agent.gemini_client import (
     test_api_key,
 )
 from backend.auth.dependencies import CurrentUser, get_current_user, require_admin
-from backend.config import BASE_DIR, FRONTEND_URL, GEMINI_MODEL, OCR_MAX_PAGES
+from backend.config import (
+    BASE_DIR,
+    FRONTEND_URL,
+    GEMINI_MODEL,
+    MLFLOW_ENABLED,
+    MLFLOW_EXPERIMENT_NAME,
+    MLFLOW_UI_URL,
+    OCR_MAX_PAGES,
+)
 from backend.email_service import (
     RESEND_MESSAGES,
     ResendValidationError,
@@ -85,6 +93,9 @@ def _status() -> dict:
         "ocr_max_pages": OCR_MAX_PAGES,
         "gemini_model": GEMINI_MODEL,
         "last_tested_at": _last_tested_at,
+        "mlflow_enabled": MLFLOW_ENABLED,
+        "mlflow_experiment_name": MLFLOW_EXPERIMENT_NAME,
+        "mlflow_ui_url": MLFLOW_UI_URL,
         "gmail_credentials_configured": gmail_credentials_configured(),
         "gmail_authorized": gmail_authorized(),
         "gmail_connected": _gmail_connected,

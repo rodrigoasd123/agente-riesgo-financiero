@@ -29,3 +29,6 @@ tmp/
 # Sistema operativo
 .DS_Store
 mlflow.db
+
+# Artefactos temporales de inspeccion
+*.inspect.ndjson

@@ -68,6 +68,24 @@ def test_settings_recarga_clave_gemini_desde_env(client: TestClient, auth_header
     assert "clave-desde-env" not in response.text
 
 
+def test_settings_expone_acceso_no_secreto_a_mlflow(
+    client: TestClient,
+    auth_headers: dict,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(settings_routes, "MLFLOW_ENABLED", True)
+    monkeypatch.setattr(settings_routes, "MLFLOW_EXPERIMENT_NAME", "agente-riesgo-financiero")
+    monkeypatch.setattr(settings_routes, "MLFLOW_UI_URL", "http://localhost:5000")
+    response = client.get("/settings/status", headers=auth_headers)
+
+    assert response.status_code == 200
+    status = response.json()
+    assert status["mlflow_enabled"] is True
+    assert status["mlflow_experiment_name"] == "agente-riesgo-financiero"
+    assert status["mlflow_ui_url"].startswith("http://")
+    assert "tracking_uri" not in status
+
+
 def test_settings_resend_guarda_sin_exponer_clave(client: TestClient, auth_headers: dict, monkeypatch: pytest.MonkeyPatch):
     saved = {}
     monkeypatch.setattr(settings_routes, "test_resend_api_key", lambda key: True)

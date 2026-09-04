@@ -18,10 +18,15 @@ from frontend.dashboard import (
     funding_rows,
     indicator_chart,
     indicator_rows,
+    investment_evolution_chart,
+    investment_series_rows,
     numeric_value,
     ordered_bar_chart,
     results_rows,
     sales_rows,
+    sales_forecast_chart,
+    sales_forecast_rows,
+    sales_trend_chart,
 )
 from frontend.theme import context_strip, inject_theme, section_eyebrow, sidebar_brand
 
@@ -40,6 +45,7 @@ for key, default in {
     "chat_history": [],
     "projection": None,
     "projection_payload": None,
+    "investment_sim": None,
     "csv_report": None,
     "pdf_report": None,
     "gmail_auth_url": None,
@@ -164,6 +170,7 @@ def analysis_tab() -> None:
             st.session_state.chat_history = []
             st.session_state.projection = None
             st.session_state.projection_payload = None
+            st.session_state.investment_sim = None
             st.success("Análisis completado.")
         elif response is not None:
             show_api_error(response)
@@ -247,6 +254,11 @@ def parse_flows(raw: str) -> list[str]:
         raise ValueError("Los flujos deben ser números separados por comas.") from exc
 
 
+def format_money(value, currency: str) -> str:
+    symbols = {"PEN": "S/", "USD": "$", "EUR": "€"}
+    return f"{symbols.get(currency, currency)} {float(value or 0):,.2f}"
+
+
 def reports_tab() -> None:
     section_eyebrow("Planeación financiera")
     st.header("Proyecciones y reportes")
@@ -286,6 +298,239 @@ def reports_tab() -> None:
         b.metric("TIR", "No disponible" if projection["tir_percent"] is None else f"{projection['tir_percent']} %")
         c.metric("Recuperación", "No alcanzada" if projection["periodo_recuperacion"] is None else f"{projection['periodo_recuperacion']} periodos")
         st.dataframe(projection["flujos"], use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.subheader("Simulación educativa de inversión")
+    st.caption(
+        "Estima la caja potencialmente disponible y prueba supuestos de rendimiento, "
+        "aportes, comisiones e impuestos. No ejecuta operaciones ni recomienda instrumentos."
+    )
+    settings_left, settings_right = st.columns(2)
+    currency = settings_left.selectbox(
+        "Moneda del escenario",
+        ["PEN", "USD", "EUR"],
+        format_func=lambda item: {"PEN": "Soles (PEN)", "USD": "Dólares (USD)", "EUR": "Euros (EUR)"}[item],
+    )
+    reserve_percent = settings_right.number_input(
+        "Reserva estimada sobre pasivo corriente (%)",
+        min_value=0.0,
+        max_value=100.0,
+        value=20.0,
+        step=1.0,
+        help="Solo se usa si el PDF no contiene una reserva mínima operativa explícita.",
+    )
+    surplus_response = api(
+        "GET",
+        f"/analyses/{analysis['analysis_id']}/treasury-surplus",
+        params={"reserve_percent": str(Decimal(str(reserve_percent))), "moneda": currency},
+    )
+    surplus = (
+        surplus_response.json()
+        if surplus_response is not None and surplus_response.status_code == 200
+        else {}
+    )
+    scenarios = {}
+    if surplus.get("calculable"):
+        detected_currency = str(surplus.get("moneda") or currency)
+        scenarios = surplus.get("escenarios") or {}
+        cash_col, reserve_col, surplus_col = st.columns(3)
+        cash_col.metric(
+            "Efectivo no restringido",
+            format_money(surplus.get("efectivo_no_restringido"), detected_currency),
+        )
+        reserve_col.metric(
+            "Reserva operativa",
+            format_money(surplus.get("reserva_operativa"), detected_currency),
+        )
+        surplus_col.metric(
+            "Excedente máximo estimado",
+            format_money(surplus.get("excedente_invertible"), detected_currency),
+        )
+        method_label = {
+            "reserva_documental": "reserva extraída del documento",
+            "porcentaje_pasivo_corriente": "porcentaje aplicado al pasivo corriente",
+        }.get(surplus.get("metodo_reserva"), "método no identificado")
+        st.caption(f"Método de reserva: {method_label}. El excedente es una estimación, no una recomendación.")
+    elif surplus:
+        st.info(f"Excedente no calculable: {surplus.get('motivo', 'faltan datos verificables')} Puedes simular un capital ingresado manualmente.")
+    elif surplus_response is not None:
+        show_api_error(surplus_response)
+
+    scenario_labels = {
+        "manual": "Capital manual",
+        "prudente_30": "Escenario 30 % del excedente",
+        "balanceado_60": "Escenario 60 % del excedente",
+        "amplio_90": "Escenario 90 % del excedente",
+    }
+    available_scenarios = ["manual", *[key for key in scenario_labels if key in scenarios]]
+    selected_scenario = st.selectbox(
+        "Capital de referencia",
+        available_scenarios,
+        format_func=lambda key: scenario_labels[key],
+    )
+    suggested_capital = float(scenarios.get(selected_scenario) or 10000)
+
+    rate_type_labels = {
+        "tea": "TEA · Tasa efectiva anual",
+        "tna": "TNA · Tasa nominal anual",
+        "efectiva_periodo": "Tasa efectiva de un período",
+    }
+    rate_type = st.selectbox(
+        "Tipo de tasa",
+        list(rate_type_labels),
+        format_func=lambda key: rate_type_labels[key],
+        help="TEA ya incorpora capitalización; TNA necesita una frecuencia; la tasa efectiva corresponde al período elegido.",
+    )
+    if rate_type == "tea":
+        st.caption("La TEA se convertirá a su tasa efectiva mensual equivalente (TEM).")
+    elif rate_type == "tna":
+        st.caption("La TNA se dividirá según la capitalización y luego se convertirá a TEA y TEM.")
+    else:
+        st.caption("Indica si la tasa efectiva corresponde a un mes, bimestre, trimestre u otro período.")
+
+    with st.form("investment_simulation_form"):
+        capital_col, contribution_col, horizon_col = st.columns(3)
+        capital_in = capital_col.number_input(
+            "Capital inicial",
+            min_value=0.01,
+            value=max(0.01, suggested_capital),
+            step=500.0,
+            key=f"investment_capital_{analysis['analysis_id']}_{selected_scenario}",
+        )
+        contribution_in = contribution_col.number_input(
+            "Aporte mensual", min_value=0.0, value=0.0, step=100.0
+        )
+        months_in = horizon_col.number_input(
+            "Plazo (meses)", min_value=1, max_value=600, value=12, step=1
+        )
+        rate_col, frequency_col, base_col = st.columns(3)
+        rate_in = rate_col.number_input(
+            "Valor de la tasa (%)",
+            min_value=-99.99,
+            max_value=1000.0,
+            value=10.0,
+            step=0.5,
+        )
+        periodicities = ["mensual", "bimestral", "trimestral", "cuatrimestral", "semestral", "anual"]
+        if rate_type == "tna":
+            frequency_in = frequency_col.selectbox(
+                "Capitalización de la TNA",
+                ["mensual", "bimestral", "trimestral", "cuatrimestral", "semestral", "anual", "diaria"],
+                format_func=str.capitalize,
+            )
+            periodicity_in = "anual"
+            base_days = base_col.selectbox(
+                "Base de días (si es diaria)", [360, 365], index=1
+            )
+        elif rate_type == "efectiva_periodo":
+            periodicity_in = frequency_col.selectbox(
+                "Período de la tasa efectiva", periodicities, format_func=str.capitalize
+            )
+            frequency_in = "mensual"
+            base_days = 365
+            base_col.caption("La tasa se aplicará al período seleccionado.")
+        else:
+            frequency_in = "anual"
+            periodicity_in = "anual"
+            base_days = 365
+            frequency_col.caption("La TEA ya incorpora la capitalización anual.")
+
+        timing_col, inflation_col, maintenance_col = st.columns(3)
+        contribution_timing = timing_col.selectbox(
+            "Momento del aporte",
+            ["fin_periodo", "inicio_periodo"],
+            format_func=lambda item: "Fin de cada mes" if item == "fin_periodo" else "Inicio de cada mes",
+        )
+        inflation_in = inflation_col.number_input(
+            "Inflación anual esperada (%)",
+            min_value=-99.99,
+            max_value=1000.0,
+            value=3.0,
+            step=0.25,
+            help="Se usa para expresar el resultado en poder adquisitivo del inicio.",
+        )
+        maintenance_cost = maintenance_col.number_input(
+            "Costo de mantenimiento mensual",
+            min_value=0.0,
+            value=0.0,
+            step=10.0,
+        )
+
+        entry_col, exit_col, tax_col = st.columns(3)
+        entry_fee = entry_col.number_input(
+            "Comisión de entrada (%)", min_value=0.0, max_value=50.0, value=0.2, step=0.05
+        )
+        exit_fee = exit_col.number_input(
+            "Comisión de salida (%)", min_value=0.0, max_value=50.0, value=0.2, step=0.05
+        )
+        tax_in = tax_col.number_input(
+            "Impuesto sobre ganancia (%)",
+            min_value=0.0,
+            max_value=60.0,
+            value=5.0,
+            step=0.5,
+        )
+        run_investment = st.form_submit_button("Simular inversión", type="primary")
+
+    if run_investment:
+        investment_payload = {
+            "capital_inicial": str(Decimal(str(capital_in))),
+            "aporte_mensual": str(Decimal(str(contribution_in))),
+            "plazo_meses": int(months_in),
+            "tasa_percent": str(Decimal(str(rate_in))),
+            "tipo_tasa": rate_type,
+            "periodicidad_tasa": periodicity_in,
+            "frecuencia_capitalizacion": frequency_in,
+            "base_dias": base_days,
+            "momento_aporte": contribution_timing,
+            "inflacion_anual_percent": str(Decimal(str(inflation_in))),
+            "costo_mantenimiento_mensual": str(Decimal(str(maintenance_cost))),
+            "comision_entrada_percent": str(Decimal(str(entry_fee))),
+            "comision_salida_percent": str(Decimal(str(exit_fee))),
+            "impuesto_ganancia_percent": str(Decimal(str(tax_in))),
+            "moneda": currency,
+        }
+        maximum_surplus = Decimal(str(surplus.get("excedente_invertible") or "0"))
+        if surplus.get("calculable") and Decimal(str(capital_in)) > maximum_surplus:
+            st.warning(
+                "El capital supera el excedente máximo estimado del documento. "
+                "La simulación continuará como escenario manual, no como disponibilidad validada."
+            )
+        with st.spinner("Calculando el escenario..."):
+            simulation_response = api(
+                "POST",
+                f"/analyses/{analysis['analysis_id']}/investment-simulation",
+                json=investment_payload,
+            )
+        if simulation_response is not None and simulation_response.status_code == 200:
+            st.session_state.investment_sim = simulation_response.json()
+            st.success("Simulación completada.")
+        elif simulation_response is not None:
+            show_api_error(simulation_response)
+
+    simulation = st.session_state.investment_sim
+    if simulation:
+        simulation_currency = str(simulation.get("moneda") or currency)
+        result_a, result_b, result_c, result_d = st.columns(4)
+        result_a.metric("Saldo final neto", format_money(simulation["saldo_final_neto"], simulation_currency))
+        result_b.metric("Ganancia neta", format_money(simulation["ganancia_neta"], simulation_currency))
+        result_c.metric("ROI neto", f"{float(simulation['roi_neto_percent']):.2f} %")
+        result_d.metric("Costos e impuestos", format_money(simulation["costos_totales"], simulation_currency))
+        rate_a, rate_b, rate_c = st.columns(3)
+        rate_a.metric("TEM equivalente", f"{float(simulation['tasa_efectiva_mensual_percent']):.4f} %")
+        rate_b.metric("TEA equivalente", f"{float(simulation['tasa_efectiva_anual_percent']):.4f} %")
+        rate_c.metric("Saldo real", format_money(simulation["saldo_final_real"], simulation_currency))
+        st.caption(simulation.get("descripcion_tasa"))
+        real_a, real_b, real_c = st.columns(3)
+        real_a.metric("Ganancia real", format_money(simulation["ganancia_real"], simulation_currency))
+        real_b.metric("ROI real", f"{float(simulation['roi_real_percent']):.2f} %")
+        real_c.metric("Costos de mantenimiento", format_money(simulation["costos_mantenimiento"], simulation_currency))
+        chart_rows = investment_series_rows(simulation)
+        if chart_rows:
+            st.altair_chart(investment_evolution_chart(chart_rows), use_container_width=True)
+            with st.expander("Ver evolución mensual"):
+                st.dataframe(chart_rows, use_container_width=True, hide_index=True)
+        st.warning(simulation.get("advertencia"))
 
     st.subheader("Exportar")
     st.caption("El reporte incluye cifras, indicadores, alertas y, si existe, el escenario actual.")
@@ -365,13 +610,15 @@ def dashboard_tab() -> None:
         else:
             st.info("Estructura financiera no disponible: se requieren pasivo total y patrimonio.")
     with right:
-        if len(sales) == 2:
+        if len(sales) > 2:
+            st.altair_chart(sales_trend_chart(sales), use_container_width=True)
+        elif len(sales) == 2:
             st.altair_chart(
                 ordered_bar_chart(sales, "periodo", "Evolución de ventas"),
                 use_container_width=True,
             )
         else:
-            st.info("Comparación de ventas no disponible: se requieren dos periodos.")
+            st.info("Evolución de ventas no disponible: se requieren al menos dos periodos.")
 
     if results:
         st.altair_chart(
@@ -380,6 +627,59 @@ def dashboard_tab() -> None:
         )
     else:
         st.info("No hay importes de ventas o utilidad para visualizar.")
+
+    st.subheader("Pronóstico estadístico de ventas")
+    forecast_horizon = st.selectbox(
+        "Horizonte del pronóstico",
+        [3, 6, 9, 12],
+        index=1,
+        format_func=lambda value: f"{value} meses",
+        key=f"forecast_horizon_{analysis['analysis_id']}",
+    )
+    forecast_response = api(
+        "GET",
+        f"/analyses/{analysis['analysis_id']}/sales-forecast",
+        params={"horizon_months": forecast_horizon},
+    )
+    forecast = (
+        forecast_response.json()
+        if forecast_response is not None and forecast_response.status_code == 200
+        else {}
+    )
+    if forecast.get("calculable"):
+        forecast_rows = sales_forecast_rows(forecast)
+        forecast_currency = str(cifras.get("moneda") or "PEN")
+        forecast_a, forecast_b, forecast_c, forecast_d = st.columns(4)
+        forecast_a.metric(
+            "Ventas proyectadas",
+            format_money(forecast.get("total_pronosticado"), forecast_currency),
+        )
+        variation = numeric_value(forecast.get("variacion_total_percent"))
+        forecast_b.metric(
+            "Variación vs. período comparable",
+            "Sin base" if variation is None else f"{variation:+.2f} %",
+        )
+        forecast_c.metric(
+            "Error histórico (MAE)",
+            format_money(forecast.get("mae"), forecast_currency),
+        )
+        model_label = {
+            "regresion_lineal_temporal": "Regresión",
+            "persistencia": "Persistencia",
+        }.get(forecast.get("modelo"), "No identificado")
+        forecast_d.metric("Modelo seleccionado", model_label)
+        if forecast_rows:
+            st.altair_chart(sales_forecast_chart(forecast_rows), use_container_width=True)
+        st.caption(
+            f"Modelo completo: {'Regresión lineal temporal' if forecast.get('modelo') == 'regresion_lineal_temporal' else model_label}. "
+            f"Confianza cualitativa: {str(forecast.get('confianza') or 'no disponible').capitalize()}. "
+            "Se selecciona por menor MAE en backtesting temporal."
+        )
+        st.warning(forecast.get("advertencia"))
+    elif forecast:
+        st.info(f"Pronóstico no disponible: {forecast.get('motivo', 'historia mensual insuficiente')}")
+    elif forecast_response is not None:
+        show_api_error(forecast_response)
 
     multiples, percentages = indicator_rows(indicadores)
     ratio_left, ratio_right = st.columns(2)
@@ -463,6 +763,29 @@ def settings_tab() -> None:
                 st.rerun()
             elif response is not None:
                 show_api_error(response)
+
+    st.divider()
+    st.subheader("Observabilidad con MLflow")
+    if status.get("mlflow_enabled"):
+        st.success(
+            f"Trazas activas · experimento {status.get('mlflow_experiment_name', 'agente-riesgo-financiero')}"
+        )
+        st.caption(
+            "Cada ejecución muestra los nodos realmente recorridos, su duración, estado y los nombres/cantidades de campos. "
+            "No se guardan preguntas, texto del PDF, cifras, respuestas ni secretos."
+        )
+        st.link_button(
+            "Abrir observabilidad en MLflow",
+            status.get("mlflow_ui_url", "http://localhost:5000"),
+            type="primary",
+            use_container_width=True,
+        )
+        st.caption(
+            "La interfaz MLflow debe estar ejecutándose en el puerto configurado. "
+            "En análisis verás extractor, indicadores, alertas y resumen; en chat, retrieval y answer o clarification."
+        )
+    else:
+        st.warning("MLflow está desactivado mediante MLFLOW_ENABLED=false.")
 
     st.divider()
     st.subheader("Correo")

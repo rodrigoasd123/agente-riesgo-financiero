@@ -18,3 +18,5 @@
 
 - [x] **T-030** Document local MLflow startup and interpretation. `[FR-003]`
 - [x] **T-031** Record verification evidence and mark the spec verified.
+- [x] **T-032** Añadir estado y botón administrativo hacia la UI configurable. `[FR-004, SEC-003]`
+- [x] **T-033** Verificar el enlace, iniciar MLflow local y actualizar evidencia. `[AC-004]`

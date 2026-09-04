@@ -100,6 +100,33 @@ Content-Type: application/json
   "discount_rate_percent": "10"
 }
 
+### Simular inversión avanzada: tasa efectiva bimestral, inflación y costos
+POST {{baseUrl}}/analyses/{{analysisId}}/investment-simulation
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "capital_inicial": "126000",
+  "aporte_mensual": "1000",
+  "plazo_meses": 12,
+  "tasa_percent": "2",
+  "tipo_tasa": "efectiva_periodo",
+  "periodicidad_tasa": "bimestral",
+  "frecuencia_capitalizacion": "mensual",
+  "base_dias": 365,
+  "momento_aporte": "fin_periodo",
+  "inflacion_anual_percent": "3",
+  "costo_mantenimiento_mensual": "10",
+  "comision_entrada_percent": "0.2",
+  "comision_salida_percent": "0.2",
+  "impuesto_ganancia_percent": "5",
+  "moneda": "PEN"
+}
+
+### Pronosticar ventas de los próximos seis meses
+GET {{baseUrl}}/analyses/{{analysisId}}/sales-forecast?horizon_months=6
+Authorization: Bearer {{token}}
+
 ### Preguntar por ROA
 POST {{baseUrl}}/chat
 Authorization: Bearer {{token}}

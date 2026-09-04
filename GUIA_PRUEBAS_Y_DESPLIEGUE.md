@@ -99,6 +99,8 @@ Después de ejecutar al menos un análisis, abre una tercera terminal:
 .\.venv\Scripts\python.exe -m mlflow ui --backend-store-uri sqlite:///mlflow.db --host 127.0.0.1 --port 5000
 ```
 
+Alternativamente ejecuta `powershell -ExecutionPolicy Bypass -File scripts/start_mlflow.ps1`. Después inicia sesión como administrador y usa **Configuración > Observabilidad con MLflow > Abrir observabilidad en MLflow**.
+
 En <http://localhost:5000> selecciona el experimento `agente-riesgo-financiero`. Una ejecución `analisis-*` muestra los nodos `extractor`, `indicadores`, `alertas` y `resumen`; una ejecución `chat-*` muestra `retrieval` y `answer` o `clarification`. Por nodo se registran duración, estado y nombres/cantidades de campos de entrada y salida. La política `metadata-only-v1` evita almacenar los valores financieros, preguntas, texto del PDF, respuestas y secretos.
 
 ## 5. Casos de aceptación manual
